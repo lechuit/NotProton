@@ -63,7 +63,7 @@ static int np_hook_parse_shell(const char *cmd, void *argv, int max, const char 
     char       *wrapped = np_launch_shell(cmd, shell, max, rest);
 
     if (wrapped)
-        NP_LOG("[launch] handed to %s: %s", shell ? shell : "/bin/sh -c", cmd);
+        NP_LOG("[launch] handed to %s (command omitted)", shell ? "configured shell" : "/bin/sh -c");
 
     int rc = orig_parse_shell(wrapped ? wrapped : cmd, argv, max, rest);
     free(wrapped);
@@ -121,7 +121,7 @@ static uint64_t np_hook_vr_support(void *self, uint32_t appid, char **arguments)
         return ret;
     np_double_backslashes(buf, len, extra);
     *arguments = buf;
-    NP_LOG("[launch] app %u arguments: %s", appid, buf);
+    NP_LOG("[launch] app %u launch arguments escaped (arguments omitted)", appid);
     return ret;
 }
 
