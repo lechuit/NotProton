@@ -51,6 +51,14 @@ sh bridge/wine-native/build-lsteamclient.sh \
 Use a separate workspace and runtime for each version. Omitting `--wine-version`
 preserves the 11.17 default. The helper refuses Staging for every supported version.
 
+The helper defaults to the macOS SDK selected by `xcrun`. To choose another
+installed SDK, set `NP_WINE_SDKROOT=/absolute/path/to/MacOSX.sdk` for this command.
+It must name an existing absolute directory and is validated before creating or
+fetching build inputs. The selected SDK is exported to configure and passed
+explicitly to the Unix compile/link commands; its canonical path is recorded in
+the component provenance. Use a fresh build directory when changing SDKs so old
+configure feature checks and objects are not reused.
+
 The workspace contains `source/`, `build/`, `proton-lsc/`, `lsteamclient/`, and
 `proton-headers-cache/`. To reuse previously configured, matching trees, pass
 `--source /path/to/wine-source --build /path/to/wine-build`. The helper refuses a
@@ -75,7 +83,7 @@ The output contains:
 - `x86_64-windows/steam.exe`
 - `lsteamclient-provenance.json`
 
-The provenance records source pins, artifact hashes and the runtime ntdll hash.
+The provenance records source pins, the selected SDK, artifact hashes and the runtime ntdll hash.
 Verification checks PE architectures, Unix architecture/signing state, required
 Wine Unix symbol exports, and absence of the shim's ole32 import. These checks do
 not establish that the bridge can contact a native Steam session or run a game.

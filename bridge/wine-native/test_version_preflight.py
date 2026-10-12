@@ -41,6 +41,7 @@ class VersionPreflightTests(unittest.TestCase):
             self.executable(self.bin / name, "exit 95")
         self.env = dict(os.environ, PATH=f"{self.bin}:{os.environ['PATH']}",
                         TEST_RUNTIME_VERSION="wine-11.17", TEST_SOURCE_COMMIT=COMMITS["11.17"])
+        self.env.pop("NP_WINE_SDKROOT", None)
 
     def executable(self, path, body):
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -122,6 +123,54 @@ class VersionPreflightTests(unittest.TestCase):
                 (build / "include/config.h").write_text(f'#define PACKAGE_VERSION "{other}"\n')
                 self.assertIn(f"Existing build is not Wine {version}", self.invoke(version))
                 self.assertFalse((source / "dlls/lsteamclient").exists())
+
+    def test_invalid_explicit_sdk_refuses_before_workspace_mutation(self):
+        sdk_file = self.root / "not-an-sdk-directory"
+        sdk_file.write_text("fixture")
+        for path in ("", "relative-sdk", str(self.root / "missing-sdk"), str(sdk_file)):
+            with self.subTest(path=path):
+                self.env["NP_WINE_SDKROOT"] = path
+                self.assertIn("SDK root must be an existing absolute directory", self.invoke())
+                self.assertFalse(self.work.exists())
+
+    def test_selected_sdk_reaches_configure_without_fetching_or_building(self):
+        # A copied helper reaches a fixture configure command; dependency helpers
+        # and rsync are private no-ops, and no real Wine compiler is invoked.
+        fixture = self.root / "bridge-sdk-fixture"
+        helper = fixture / "bridge/wine-native/build-lsteamclient.sh"
+        helper.parent.mkdir(parents=True)
+        shutil.copyfile(HERE / "build-lsteamclient.sh", helper)
+        for relative in ("lsteamclient/fetch.sh", "steam-shim/fetch-headers.sh"):
+            self.executable(fixture / relative, "exit 0")
+        self.executable(self.bin / "rsync", "exit 0")
+        source = self.source()
+        (source / "configure.ac").write_text("WINE_CONFIG_MAKEFILE(dlls/lsteamclient)\n"
+                                             "WINE_CONFIG_MAKEFILE(programs/steam.exe)\n")
+        record = self.root / "configure-environment.json"
+        configure = source / "configure"
+        configure.write_text("#!/usr/bin/env python3\nimport json, os\n"
+                             "with open(os.environ['TEST_CONFIGURE_RECORD'], 'w') as f:\n"
+                             "    json.dump({'SDKROOT': os.environ['SDKROOT']}, f)\n"
+                             "raise SystemExit(96)\n")
+        configure.chmod(0o755)
+        default_sdk = self.root / "default SDK"
+        explicit_sdk = self.root / "selected SDK"
+        default_sdk.mkdir()
+        explicit_sdk.mkdir()
+        self.executable(self.bin / "xcrun", 'printf "%s\\n" "$TEST_DEFAULT_SDK"')
+        args = ["sh", str(helper), "--toolchain", str(self.toolchain), "--bison", str(self.bison),
+                "--runtime-root", str(self.runtime), "--work", str(self.work), "--output", str(self.output)]
+        for explicit, expected in ((None, default_sdk), (explicit_sdk, explicit_sdk)):
+            with self.subTest(explicit=explicit):
+                env = dict(self.env, TEST_CONFIGURE_RECORD=str(record), TEST_DEFAULT_SDK=str(default_sdk))
+                if explicit is not None:
+                    env["NP_WINE_SDKROOT"] = str(explicit)
+                    # A broken default SDK resolver must not override an explicit choice.
+                    self.executable(self.bin / "xcrun", "exit 95")
+                result = subprocess.run(args, env=env, text=True, capture_output=True, timeout=10)
+                self.assertEqual(result.returncode, 96, result.stderr)
+                self.assertEqual(json.loads(record.read_text())["SDKROOT"], str(expected.resolve()))
+                self.assertEqual(self.ntdll.read_bytes(), b"unchanged stock runtime")
 
     def test_probe_compiler_receives_exact_version_for_both_architectures(self):
         # Replace build dependencies in this private fixture, never compile or run Wine.

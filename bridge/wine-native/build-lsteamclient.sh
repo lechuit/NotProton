@@ -36,6 +36,9 @@ Optional:
   --jobs N            PE make parallelism, 1-16 (default: 2)
   --help              Show this help without building or downloading anything
 
+Environment:
+  NP_WINE_SDKROOT     Existing absolute macOS SDK directory (default: xcrun SDK)
+
 This builds only LSC/shim and their required headers, tools, and PE import/runtime
 libraries. It never builds or replaces Wine's Unix ntdll. The installed ntdll.so
 is copied into the build directory only as the matching link input.
@@ -132,6 +135,22 @@ if [ -f "$build/Makefile" ]; then
     [ -n "$configured_source" ] || fail "Existing Makefile does not record srcdir"
     [ "$(cd "$build" && cd "$configured_source" && pwd -P)" = "$source" ] || fail "Existing build points to another source tree"
 fi
+if [ "${NP_WINE_SDKROOT+x}" = x ]; then
+    SDKROOT=$NP_WINE_SDKROOT
+else
+    SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
+fi
+SDKROOT=$(python3 - "$SDKROOT" <<'PY'
+from pathlib import Path
+import sys
+
+path = sys.argv[1]
+if not path.startswith("/") or any(ord(c) < 32 or ord(c) == 127 for c in path) or not Path(path).is_dir():
+    raise SystemExit("macOS SDK root must be an existing absolute directory (NP_WINE_SDKROOT or xcrun).")
+print(Path(path).resolve())
+PY
+)
+export SDKROOT
 mkdir -p "$work" "$(dirname "$source")" "$build" "$output"
 
 if [ ! -d "$source/.git" ]; then
@@ -155,8 +174,6 @@ OPENVR_COMMIT=f51d87ecf8f7903e859b0aa4d617ff1e5f33db5a \
 
 PATH="$bison_dir:$toolchain/bin:$PATH"
 export PATH
-SDKROOT=$(xcrun --sdk macosx --show-sdk-path)
-export SDKROOT
 cd "$build"
 if [ -f Makefile ]; then
     ./config.status Makefile
@@ -180,14 +197,14 @@ set --
 # shellcheck disable=SC2086
 for cpp in $cpps; do
     object="$module/${cpp%.cpp}.o"
-    /usr/bin/clang++ -arch x86_64 -mmacosx-version-min=15.0 \
+    /usr/bin/clang++ -arch x86_64 -isysroot "$SDKROOT" -mmacosx-version-min=15.0 \
         -Werror=unguarded-availability-new -I"$module" -I"$source/$module" \
         -Iinclude -I"$source/include" -D__WINESRC__ -DSTEAM_API_EXPORTS \
         -Dprivate=public -Dprotected=public -DWINE_UNIX_LIB \
         -fPIC -fasynchronous-unwind-tables -g -O2 -c -o "$object" "$source/$module/$cpp"
     set -- "$@" "$object"
 done
-/usr/bin/clang++ -arch x86_64 -mmacosx-version-min=15.0 -dynamiclib \
+/usr/bin/clang++ -arch x86_64 -isysroot "$SDKROOT" -mmacosx-version-min=15.0 -dynamiclib \
     -install_name @rpath/lsteamclient.so -Wl,-rpath,@loader_path/ \
     -o "$module/lsteamclient.so" "$@" dlls/ntdll/ntdll.so -lc++ -Wl,-undefined,dynamic_lookup
 install_name_tool -change ntdll.so @rpath/ntdll.so "$module/lsteamclient.so"
@@ -213,7 +230,7 @@ echo "Steam shim $info"
 mkdir -p "$output/x86_64-unix"
 cp "$module/lsteamclient.so" "$output/x86_64-unix/lsteamclient.so"
 cp programs/steam.exe/x86_64-windows/steam.exe "$output/x86_64-windows/steam.exe"
-python3 - "$output" "$ntdll" "$wine_commit" "$proton_commit" "$build/dlls/ntdll/ntdll.so" "$wine_version" <<'PY'
+python3 - "$output" "$ntdll" "$wine_commit" "$proton_commit" "$build/dlls/ntdll/ntdll.so" "$wine_version" "$SDKROOT" <<'PY'
 import hashlib
 import json
 import pathlib
@@ -234,6 +251,7 @@ files = ["x86_64-windows/lsteamclient.dll", "i386-windows/lsteamclient.dll",
          "x86_64-unix/lsteamclient.so", "x86_64-windows/steam.exe"]
 provenance = {"schemaVersion": 1, "wineVersion": sys.argv[6], "wineCommit": sys.argv[3],
               "protonCommit": sys.argv[4], "runtimeNtdllSHA256": sha(ntdll),
+              "macosSDKRoot": sys.argv[7],
               "files": {f: sha(output / f) for f in files},
               "ntdllRebuilt": False, "runtimeModified": False,
               "validation": "PE architectures, unsigned x86_64 Unix bridge, matching Wine symbol exports. No Steam session validation."}
