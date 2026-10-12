@@ -99,6 +99,13 @@ arguments are omitted from the wrapper log because they can contain login tokens
 output produced by Wine or the Windows program itself can still be sensitive.
 Native prefixes use `notproton-wine/native-<engine-id>/pfx` and the same log name.
 
+Both independent Wine modes expose a CPU toggle for Rosetta AVX advertisement.
+It edits the game's `ROSETTA_ADVERTISE_AVX=1` or `=0` launch setting. The launcher
+preserves only those explicit values; unset, empty, or other values remain unset,
+and all other inherited `ROSETTA_*` overrides are removed. No AVX setting is enabled
+by default. This controls reported CPU features and does not establish that a game
+starts or that its graphics or protection requirements are supported.
+
 The independent registry is stored in `notproton/wine-tools`, separate from
 CrossOver's registry, so CrossOver setup and Steam startup preserve it. Run
 `make winecheck compatcheck` and

@@ -145,6 +145,12 @@ log="$prefix_root/notproton-wine.log"
 export WINEPREFIX="$prefix_root/pfx" WINELOADER="$loader" WINESERVER="$server"
 export PATH="$runtime/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 export WINEDEBUG="${WINEDEBUG:-err+all,fixme-all}"
+# Rosetta's CPU advertisement applies to stock x86_64 Wine too. Preserve only
+# an explicit per-game 0/1 choice; no default or other Rosetta override is inherited.
+rosetta_avx_override=""
+case "${ROSETTA_ADVERTISE_AVX-}" in
+  0|1) rosetta_avx_override=$ROSETTA_ADVERTISE_AVX ;;
+esac
 # These belong to the native Steam/CrossOver bridge, which this backend does not use.
 unset DYLD_INSERT_LIBRARIES STEAM_DYLD_INSERT_LIBRARIES WINEDLLPATH WINEDLLOVERRIDES
 unset CX_ROOT CX_HOME CX_APPLEGPTK_LIBD3DSHARED_PATH
@@ -152,6 +158,9 @@ unset WINEARCH WINEESYNC WINEFSYNC WINEMSYNC WINEPRELOADRESERVE WINELOADERNOEXEC
 for variable in $(env | sed -nE 's/^((CX|D3DM|DXMT|NOTPROTON|ROSETTA|DYLD)_[A-Z0-9_]*)=.*/\1/p'); do
   unset "$variable"
 done
+if [ -n "$rosetta_avx_override" ]; then
+  export ROSETTA_ADVERTISE_AVX="$rosetta_avx_override"
+fi
 {
   printf '\n=== experimental Wine %s: %s ===\n' "$engine" "$(date)"
   printf 'verb=%s\nprefix=%s\n' "$verb" "$WINEPREFIX"
@@ -159,6 +168,9 @@ done
     printf 'Experimental native SteamAPI bridge; Steam for Mac must be running. No Steam Input or overlay bridge.\n'
   else
     printf 'No native SteamAPI bridge. Games requiring SteamAPI need Windows Steam running in this prefix.\n'
+  fi
+  if [ -n "$rosetta_avx_override" ]; then
+    printf 'Requested Rosetta AVX advertisement=%s (per-game setting).\n' "$rosetta_avx_override"
   fi
   printf 'Launching a Windows program. Arguments omitted because they may contain authentication tokens.\n'
 } >> "$log"

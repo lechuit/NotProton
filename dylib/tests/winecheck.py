@@ -27,6 +27,7 @@ class WineRunnerTests(unittest.TestCase):
                                'printf "bridge=[%s]\\n" "${WINEDLLPATH:-unset}"\n'
                                'printf "cx=[%s] dxmt=[%s] d3dm=[%s] msync=[%s]\\n" "${CX_GRAPHICS_BACKEND:-unset}" "${DXMT_CONFIG:-unset}" "${D3DM_ENABLE_METALFX:-unset}" "${WINEMSYNC:-unset}"\n'
                                'printf "arch=[%s] esync=[%s] dyld=[%s] fallback=[%s] customcx=[%s] np=[%s]\\n" "${WINEARCH:-unset}" "${WINEESYNC:-unset}" "${DYLD_LIBRARY_PATH:-unset}" "${DYLD_FALLBACK_LIBRARY_PATH:-unset}" "${CX_TEST:-unset}" "${NOTPROTON_TEST:-unset}"\n'
+                               'printf "avx=[%s] other_rosetta=[%s]\\n" "${ROSETTA_ADVERTISE_AVX-unset}" "${ROSETTA_TEST-unset}"\n'
                                'for a in "$@"; do printf "passed=[%s]\\n" "$a"; done\n'
                                'exit "${FAKE_WINE_STATUS:-0}"\n')
         self.server.write_text('#!/bin/sh\nprintf "server=[%s]\\n" "$*"\nexit 0\n')
@@ -43,7 +44,8 @@ class WineRunnerTests(unittest.TestCase):
                         WINEDLLPATH="foreign native Steam bridge", CX_ROOT="CrossOver",
                         CX_GRAPHICS_BACKEND="d3dmetal", DXMT_CONFIG="old setting", D3DM_ENABLE_METALFX="1", WINEMSYNC="1",
                         WINEARCH="win32", WINEESYNC="1", DYLD_LIBRARY_PATH="foreign dylibs", DYLD_FALLBACK_LIBRARY_PATH="foreign fallback",
-                        CX_TEST="inherited", NOTPROTON_TEST="inherited")
+                        CX_TEST="inherited", NOTPROTON_TEST="inherited", ROSETTA_TEST="inherited")
+        self.env.pop("ROSETTA_ADVERTISE_AVX", None)
 
     def tearDown(self):
         self.temp.cleanup()
@@ -154,6 +156,7 @@ class WineRunnerTests(unittest.TestCase):
             'fi\n'
             'printf "override=[%s] appid=[%s] gameid=[%s] client=[%s]\\n" "$WINEDLLOVERRIDES" "${SteamAppId:-unset}" "${SteamGameId:-unset}" "$STEAM_COMPAT_CLIENT_INSTALL_PATH"\n'
             'printf "dllpath=[%s]\\n" "$WINEDLLPATH"\n'
+            'printf "avx=[%s] other_rosetta=[%s]\\n" "${ROSETTA_ADVERTISE_AVX-unset}" "${ROSETTA_TEST-unset}"\n'
             'for a in "$@"; do printf "passed=[%s]\\n" "$a"; done\n'
             'exit "${FAKE_WINE_STATUS:-0}"\n')
         ntdll = self.runtime / "lib/wine/x86_64-unix/ntdll.so"
@@ -208,6 +211,33 @@ class WineRunnerTests(unittest.TestCase):
         self.assertNotIn("x86_64-unix", dll_line)
         self.assertIn("Experimental native SteamAPI bridge", log)
         self.assertNotIn("No native SteamAPI bridge.", log)
+
+    def check_rosetta_avx_choices(self):
+        for supplied in (None, "0", "1", "", "2", "true", "$(literal)"):
+            with self.subTest(supplied=supplied):
+                if supplied is None:
+                    self.env.pop("ROSETTA_ADVERTISE_AVX", None)
+                else:
+                    self.env["ROSETTA_ADVERTISE_AVX"] = supplied
+                result = self.run_tool("runinprefix", "/game with spaces.exe", "--literal", "argument kept")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                log = (self.prefix_root / "notproton-wine.log").read_text()
+                latest = log.rsplit("=== experimental Wine", 1)[-1]
+                expected = supplied if supplied in ("0", "1") else "unset"
+                self.assertIn(f"avx=[{expected}] other_rosetta=[unset]", latest)
+                self.assertIn("passed=[/game with spaces.exe]", latest)
+                self.assertIn("passed=[argument kept]", latest)
+                if expected == "unset":
+                    self.assertNotIn("Requested Rosetta AVX advertisement=", latest)
+                else:
+                    self.assertIn(f"Requested Rosetta AVX advertisement={expected}", latest)
+
+    def test_raw_rosetta_avx_allows_only_explicit_zero_or_one(self):
+        self.check_rosetta_avx_choices()
+
+    def test_native_rosetta_avx_allows_only_explicit_zero_or_one(self):
+        self.native_mode()
+        self.check_rosetta_avx_choices()
 
     def test_native_runtime_abi_change_refused_before_write(self):
         self.native_mode()

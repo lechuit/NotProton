@@ -21,19 +21,40 @@ for (const form of Object.keys(FORMS)) {
        'a shortcut renders the panel before a tool name reaches the page');
   const experimental = walk(P({ details: details('CX_GRAPHICS_BACKEND=d3dmetal WINEMSYNC=1 %command%',
     { strCompatToolName: 'notproton-wine-wine-11.17' }) }));
-  t.ok(experimental.every(x => x.type !== 'Toggle' && x.type !== 'Dropdown'),
+  t.ok(experimental.every(x => x.type !== 'Dropdown' &&
+    (x.type !== 'Toggle' || x.props.label === 'Advertise AVX2 to Rosetta')) &&
+    experimental.filter(x => x.type === 'Toggle').length === 1,
        'independent Wine hides unsupported CrossOver graphics and synchronization controls');
   t.ok(experimental.some(x => typeof x.props.children === 'string'
     && x.props.children.includes('Experimental Wine engine') && x.props.children.includes('Windows Steam')),
        'independent Wine explains its SteamAPI limitation');
   const nativeExperimental = walk(P({ details: details('CX_GRAPHICS_BACKEND=d3dmetal %command%',
     { strCompatToolName: 'notproton-wine-native-wine-11.17' }) }));
-  t.ok(nativeExperimental.every(x => x.type !== 'Toggle' && x.type !== 'Dropdown'),
+  t.ok(nativeExperimental.every(x => x.type !== 'Dropdown' &&
+    (x.type !== 'Toggle' || x.props.label === 'Advertise AVX2 to Rosetta')) &&
+    nativeExperimental.filter(x => x.type === 'Toggle').length === 1,
        'native independent Wine also hides unsupported CrossOver controls');
   t.ok(nativeExperimental.some(x => typeof x.props.children === 'string'
     && x.props.children.includes('native SteamAPI bridge') && x.props.children.includes('Steam for Mac')
     && !x.props.children.includes('Windows Steam')),
        'native independent Wine explains its Mac Steam requirement');
+
+  for (const tool of ['notproton-wine-wine-11.17', 'notproton-wine-native-wine-11.17']) {
+    const cpu = opts => walk(P({ details: details(opts, { strCompatToolName: tool }) }))
+      .find(x => x.type === 'Toggle');
+    for (const [setting, enabled] of [['', false], ['ROSETTA_ADVERTISE_AVX=0 ', false],
+      ['ROSETTA_ADVERTISE_AVX=1 ', true], ['ROSETTA_ADVERTISE_AVX=0 ROSETTA_ADVERTISE_AVX="1" ', true]]) {
+      t.ok(cpu(setting + '%command%').props.checked === enabled, `${tool} CPU toggle reflects explicit AVX choice`);
+    }
+    written.length = 0;
+    const before = 'STEAM_COMPAT_DATA_PATH="/prefix with spaces" ROSETTA_ADVERTISE_AVX="0" %command% --name "argument kept"';
+    cpu(before).props.onChange(true);
+    t.ok(last().includes('ROSETTA_ADVERTISE_AVX=1') && last().includes('STEAM_COMPAT_DATA_PATH="/prefix with spaces"') &&
+      last().includes('%command% --name "argument kept"'), `${tool} enabling AVX preserves prefix and arguments`);
+    cpu(last()).props.onChange(false);
+    t.ok(last().includes('ROSETTA_ADVERTISE_AVX=0') && last().includes('%command% --name "argument kept"'),
+      `${tool} disabling AVX writes an explicit zero without changing arguments`);
+  }
 
   let r = nodes('');
   t.ok(toggles(r).length === 6 && sections(r).length === 3, 'automatic shows six toggles in three sections');
