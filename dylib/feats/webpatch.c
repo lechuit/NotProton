@@ -220,6 +220,10 @@ static int out_expand(np_out_t *o, const char *replace, const np_cap_t *caps) {
     "{data:\"wined3d\",label:\"WineD3D\"}];" \
     "if(t.unAppID<2147483648&&(t.vecPlatforms||[]).indexOf(\"osx\")>=0" \
     "&&!t.strCompatToolName)return null;" \
+    "if((t.strCompatToolName||\"\").startsWith(\"notproton-wine-native-\"))" \
+    "return(0," RT ".jsx)(\"div\",{className:\"MSCXPanel\",children:npL(" \
+    "\"Experimental native SteamAPI bridge. Keep Steam for Mac running. No Steam Input or overlay bridge; configure graphics in the Wine runtime.\"," \
+    "\"实验性原生 SteamAPI 桥接。请保持 Mac 版 Steam 运行。无 Steam Input 或覆盖层桥接；请在 Wine 环境配置图形。\")});" \
     "if((t.strCompatToolName||\"\").startsWith(\"notproton-wine-\"))" \
     "return(0," RT ".jsx)(\"div\",{className:\"MSCXPanel\",children:npL(" \
     "\"Experimental Wine engine. Configure graphics in its runtime. Games requiring SteamAPI need Windows Steam in this prefix.\"," \

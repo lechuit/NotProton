@@ -10,7 +10,7 @@ enum ImportWineCommand {
         }
         do {
             let imported = try IndependentWine.register(descriptorAt: URL(filePath: arguments[1]))
-            FileHandle.standardOutput.write(Data("Registered \(imported.display). Restart Steam to select it.\n\(IndependentWine.limitations)\n".utf8))
+            FileHandle.standardOutput.write(Data("Registered \(imported.display). Restart Steam to select it.\n\(imported.limitations)\n".utf8))
             exit(0)
         } catch {
             FileHandle.standardError.write(Data("\(error.localizedDescription)\n".utf8))

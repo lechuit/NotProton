@@ -145,6 +145,139 @@ class WineRunnerTests(unittest.TestCase):
         result = self.run_tool("waitforexitandrun", "/game.exe")
         self.assertEqual(result.returncode, 0, result.stderr)
 
+    def native_mode(self):
+        self.loader.write_text('#!/bin/sh\n'
+            'if [ "$1" = wineboot ]; then mkdir -p "$WINEPREFIX"; touch "$WINEPREFIX/system.reg"; exit 0; fi\n'
+            'printf "override=[%s] appid=[%s] gameid=[%s] client=[%s]\\n" "$WINEDLLOVERRIDES" "${SteamAppId:-unset}" "${SteamGameId:-unset}" "$STEAM_COMPAT_CLIENT_INSTALL_PATH"\n'
+            'for a in "$@"; do printf "passed=[%s]\\n" "$a"; done\n'
+            'exit "${FAKE_WINE_STATUS:-0}"\n')
+        ntdll = self.runtime / "lib/wine/x86_64-unix/ntdll.so"
+        ntdll.parent.mkdir(parents=True)
+        ntdll.write_text("stock matching ntdll")
+        self.runtime_ntdll = ntdll
+        files = ["x86_64-windows/lsteamclient.dll", "x86_64-windows/steamclient64.dll", "x86_64-windows/steam.exe",
+                 "i386-windows/lsteamclient.dll", "i386-windows/steamclient.dll", "x86_64-unix/lsteamclient.so",
+                 "x86_64-unix/ntdll.so"]
+        payload = {name: (ntdll.read_bytes() if name.endswith("ntdll.so") else f"bridge {name}".encode()) for name in files}
+        checksums = "".join(f"{hashlib.sha256(payload[name]).hexdigest()}  {name}\n" for name in sorted(files[:-1]))
+        checksums += f"{hashlib.sha256(payload[files[-1]]).hexdigest()}  {files[-1]}\n"
+        self.bridge_identity = hashlib.sha256(("ntdll-runtime-link-v1\n" + checksums).encode()).hexdigest()
+        managed = self.home / "Library/Application Support/notproton/runners/wine-native-test"
+        self.bridge = managed / f"bridge-{self.bridge_identity}"
+        for name, data in payload.items():
+            target = self.bridge / name
+            target.parent.mkdir(parents=True, exist_ok=True)
+            if name == "x86_64-unix/ntdll.so":
+                target.symlink_to(ntdll)
+            else:
+                target.write_bytes(data)
+        (self.bridge / "checksums.sha256").write_text(checksums)
+        self.record = managed / "runtime.v1"
+        self.record.write_text("\n".join(["2", "native-test", str(self.runtime), "bin/wine", "bin/wineserver",
+            hashlib.sha256(self.loader.read_bytes()).hexdigest(), hashlib.sha256(self.server.read_bytes()).hexdigest(),
+            self.bridge_identity, hashlib.sha256(ntdll.read_bytes()).hexdigest()]) + "\n")
+        (self.tool / "build").write_text("wine-native-test\n")
+        self.prefix_root = self.data / "notproton-wine/native-test"
+        client = self.base / "native Steam MacOS"
+        client.mkdir()
+        (client / "steamclient.dylib").write_text("native client fixture")
+        self.env.update(STEAM_COMPAT_CLIENT_INSTALL_PATH=str(client), STEAM_COMPAT_APP_ID="3719590")
+
+    def test_native_bootstrap_and_shim_forwarding(self):
+        self.native_mode()
+        result = self.run_tool("waitforexitandrun", "/game folder/game.exe", "--windowed", "literal $(`text`)")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        steam = self.prefix_root / "pfx/drive_c/Program Files (x86)/Steam"
+        self.assertEqual((steam / "steam.exe").read_bytes(), (self.bridge / "x86_64-windows/steam.exe").read_bytes())
+        self.assertTrue((self.prefix_root / "pfx/drive_c/windows/syswow64/lsteamclient.dll").is_file())
+        log = (self.prefix_root / "notproton-wine.log").read_text()
+        self.assertIn(f"passed=[{steam / 'steam.exe'}]", log)
+        self.assertIn("passed=[/game folder/game.exe]", log)
+        self.assertIn("passed=[literal $(`text`)]", log)
+        self.assertIn("override=[steamclient=n;steamclient64=n;lsteamclient=b] appid=[3719590]", log)
+        self.assertIn("Experimental native SteamAPI bridge", log)
+        self.assertNotIn("No native SteamAPI bridge.", log)
+
+    def test_native_runtime_abi_change_refused_before_write(self):
+        self.native_mode()
+        self.runtime_ntdll.write_text("updated runtime but same loader")
+        result = self.run_tool("waitforexitandrun", "/game.exe")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Runtime ntdll.so changed", result.stderr)
+        self.assertFalse(self.data.exists())
+
+    def test_native_bridge_corruption_refused_before_write(self):
+        self.native_mode()
+        (self.bridge / "x86_64-unix/lsteamclient.so").write_text("changed bridge")
+        result = self.run_tool("waitforexitandrun", "/game.exe")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Native bridge files changed", result.stderr)
+        self.assertFalse(self.data.exists())
+
+    def test_native_unknown_windows_steam_prefix_preserved(self):
+        self.native_mode()
+        steam = self.prefix_root / "pfx/drive_c/Program Files (x86)/Steam"
+        steam.mkdir(parents=True)
+        (steam / "steam.exe").write_text("real Windows Steam - preserve")
+        result = self.run_tool("waitforexitandrun", "/game.exe")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Windows Steam or an unknown shim", result.stderr)
+        self.assertEqual((steam / "steam.exe").read_text(), "real Windows Steam - preserve")
+        self.assertFalse((self.prefix_root / "engine").exists())
+        self.assertFalse((self.prefix_root / "notproton-wine.log").exists())
+
+    def test_native_direct_helpers_do_not_use_shim_or_game_identity(self):
+        self.native_mode()
+        self.env.update(SteamAppId="3719590", SteamGameId="3719590")
+        result = self.run_tool("runinprefix", "cmd", "/c", "ver")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        log = (self.prefix_root / "notproton-wine.log").read_text()
+        self.assertIn("passed=[cmd]", log)
+        self.assertNotIn("passed=[" + str(self.prefix_root / "pfx/drive_c/Program Files (x86)/Steam/steam.exe") + "]", log)
+        self.assertIn("appid=[unset] gameid=[unset]", log)
+
+    def test_native_mode_does_not_fallback_if_client_missing(self):
+        self.native_mode()
+        self.env["STEAM_COMPAT_CLIENT_INSTALL_PATH"] = str(self.base / "missing client")
+        result = self.run_tool("waitforexitandrun", "/game.exe")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Steam for Mac client library is missing", result.stderr)
+        self.assertFalse(self.data.exists())
+
+    def test_native_identical_ntdll_copy_is_refused(self):
+        self.native_mode()
+        target = self.bridge / "x86_64-unix/ntdll.so"
+        target.unlink()
+        target.write_bytes(self.runtime_ntdll.read_bytes())
+        result = self.run_tool("waitforexitandrun", "/game.exe")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must link to the exact runtime image", result.stderr)
+        self.assertFalse(self.data.exists())
+
+    def test_native_ntdll_link_to_identical_foreign_copy_is_refused(self):
+        self.native_mode()
+        foreign = self.base / "identical foreign ntdll.so"
+        foreign.write_bytes(self.runtime_ntdll.read_bytes())
+        target = self.bridge / "x86_64-unix/ntdll.so"
+        target.unlink()
+        target.symlink_to(foreign)
+        result = self.run_tool("waitforexitandrun", "/game.exe")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("must link to the exact runtime image", result.stderr)
+        self.assertFalse(self.data.exists())
+
+    def test_native_other_bridge_symlinks_are_refused(self):
+        self.native_mode()
+        target = self.bridge / "x86_64-windows/steamclient64.dll"
+        foreign = self.base / "identical forwarder.dll"
+        foreign.write_bytes(target.read_bytes())
+        target.unlink()
+        target.symlink_to(foreign)
+        result = self.run_tool("waitforexitandrun", "/game.exe")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Only the runtime ntdll link", result.stderr)
+        self.assertFalse(self.data.exists())
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -30,7 +30,7 @@ runtime root, including when they are symlinks. Registration pins their SHA256
 hashes; import again after updating Wine. CrossOver cannot be imported under this
 provider, and all existing CrossOver licensing and trial checks remain active.
 
-**This is a raw Wine launcher, not a port of the native SteamAPI bridge.** Games
+**Version 1 is a raw Wine launcher without a native SteamAPI bridge.** Games
 that need SteamAPI require the real Windows Steam client running in this Wine
 prefix. No native Steam Input, overlay, automatic graphics installation, or Steam
 Cloud support is claimed. Aion 2 compatibility is unverified. Neither Whisky's UI
@@ -39,7 +39,55 @@ The raw wrapper tracks the launched Wine process, rather than waiting for every
 process in the prefix; Windows Steam can therefore remain open after a game exits.
 Launchers that exit before handing off to a child game are not yet tracked.
 
-Each engine's prefix lives at
+### Experimental native SteamAPI mode
+
+Version 2 adds a separately rebuilt native SteamAPI bridge for the exact supported
+Wine 11.17 runtime. Steam for Mac must be running and signed in; this mode does
+not install or run Windows Steam. It still provides no Steam Input or overlay
+bridge and installs no graphics translation libraries. A successful SteamAPI
+probe does not establish Aion 2 or anti-cheat compatibility.
+
+```json
+{
+  "schemaVersion": 2,
+  "id": "wine-11.17",
+  "displayName": "Wine 11.17 Native Steam",
+  "backend": "wine",
+  "root": "/absolute/canonical/path/to/wine",
+  "wineLoader": "bin/wine",
+  "wineServer": "bin/wineserver",
+  "steamAPI": "native",
+  "bridgeRoot": "/absolute/path/to/rebuilt-native-bridge"
+}
+```
+
+The bridge root contains `bridge-manifest.json` with schema version 1, Wine version
+`11.17`, source commit `36b6a2cf679fb395f668a917b76537190e212d9c`, the exact
+runtime `ntdll.so` SHA256, and hashes for this fixed file set:
+
+- `x86_64-windows/lsteamclient.dll`, `steamclient64.dll`, and `steam.exe`
+- `i386-windows/lsteamclient.dll` and `steamclient.dll`
+- `x86_64-unix/lsteamclient.so`
+
+The importer copies these bridge files into an immutable managed directory and
+links its Unix half to the **canonical runtime ntdll.so**. A separate copy of that
+image loads duplicate Wine globals and can crash the bridge, even when its bytes
+are identical. This one link must point to the exact runtime image; other bridge
+symlinks are rejected. Both copied files and the actual runtime ntdll.so are
+checked again before each launch. Wine, CrossOver, and
+their original ntdll files are never replaced. The native tool is named
+`notproton-wine-native-<id>`, and its prefix is separate from the raw engine's
+prefix. Raw descriptor ids beginning `native-` are reserved to prevent collisions.
+
+For game launches the wrapper initializes Wine, stages the bridge into the prefix,
+and launches the rebuilt `steam.exe` helper with the original target and arguments.
+The helper publishes Steam registry discovery data and forwards SteamAPI calls to
+the native client; it is not the Windows Steam client. `runinprefix` remains a direct
+Wine helper verb. Missing/mismatched bridge files or native client libraries cause
+a clear refusal and never fall back to raw Wine. Existing CrossOver or unknown
+Windows Steam prefixes are refused without modifying them.
+
+Each raw engine's prefix lives at
 `<STEAM_COMPAT_DATA_PATH>/notproton-wine/<engine-id>/pfx`; logs are alongside it as
 `notproton-wine.log`. The launcher never deploys CrossOver's ntdll patches or
 copies its graphics libraries. It refuses an existing `pfx` or `notproton-build`
@@ -47,6 +95,7 @@ record before changing that game's directory. Back up the existing compatibility
 data directory and choose a fresh directory for these experiments. Launch
 arguments are omitted from the wrapper log because they can contain login tokens;
 output produced by Wine or the Windows program itself can still be sensitive.
+Native prefixes use `notproton-wine/native-<engine-id>/pfx` and the same log name.
 
 The independent registry is stored in `notproton/wine-tools`, separate from
 CrossOver's registry, so CrossOver setup and Steam startup preserve it. Run

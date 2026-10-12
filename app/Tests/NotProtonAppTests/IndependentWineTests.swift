@@ -100,4 +100,95 @@ struct IndependentWineTests {
         }
         #expect(try FileManager.default.contentsOfDirectory(atPath: victim.path(percentEncoded: false)).isEmpty)
     }
+
+    private func nativeFixture(_ scratch: URL, runtime: URL) throws -> URL {
+        let bridge = scratch.appending(path: "matching native bridge")
+        try FileManager.default.createDirectory(at: bridge, withIntermediateDirectories: true)
+        let ntdll = runtime.appending(path: NativeWineBridge.runtimeNtdll)
+        try FileManager.default.createDirectory(at: ntdll.deletingLastPathComponent(), withIntermediateDirectories: true)
+        try Data("matching stock ntdll".utf8).write(to: ntdll)
+        var files: [String: String] = [:]
+        for relative in NativeWineBridge.files {
+            let file = bridge.appending(path: relative)
+            try FileManager.default.createDirectory(at: file.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try Data("compiled bridge: \(relative)".utf8).write(to: file)
+            files[relative] = try Digest.sha256(of: file)
+        }
+        let manifest = NativeWineBridgeManifest(schemaVersion: 1, wineVersion: "11.17",
+            wineCommit: NativeWineBridge.wineCommit, runtimeNtdllSHA256: try Digest.sha256(of: ntdll), files: files)
+        try JSONEncoder().encode(manifest).write(to: bridge.appending(path: "bridge-manifest.json"))
+        return bridge
+    }
+
+    private func nativeDescriptor(root: URL, bridge: URL) -> IndependentWineDescriptor {
+        IndependentWineDescriptor(schemaVersion: 2, id: "wine-11.17", displayName: "Wine 11.17", backend: "wine",
+            root: root.path(percentEncoded: false), wineLoader: "bin/wine", wineServer: "bin/wineserver",
+            steamAPI: "native", bridgeRoot: bridge.path(percentEncoded: false))
+    }
+
+    @Test("Native registration copies bridge files and links the exact Wine image without changing Wine or raw registrations")
+    func nativeRegistration() throws {
+        let scratch = try scratchDirectory("native-wine")
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let root = try fixture(scratch)
+        let bridge = try nativeFixture(scratch, runtime: root)
+        let file = scratch.appending(path: "engine.json")
+        let script = scratch.appending(path: "run-wine")
+        try Data("#!/bin/sh\n".utf8).write(to: script)
+        let support = scratch.appending(path: "support")
+        let tools = scratch.appending(path: "tools")
+        try JSONEncoder().encode(descriptor(root: root)).write(to: file)
+        let raw = try IndependentWine.register(descriptorAt: file, support: support, compatTools: tools, runScript: script)
+        try JSONEncoder().encode(nativeDescriptor(root: root, bridge: bridge)).write(to: file)
+        let sourceNtdll = try Data(contentsOf: root.appending(path: NativeWineBridge.runtimeNtdll))
+        let native = try IndependentWine.register(descriptorAt: file, support: support, compatTools: tools, runScript: script)
+        #expect(native.name == "notproton-wine-native-wine-11.17")
+        #expect(native.runtimeRecord.hasPrefix("2\nnative-wine-11.17\n"))
+        let copied = support.appending(path: "runners/wine-native-wine-11.17/bridge-\(native.bridge!.identity)")
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: copied.appending(path: "x86_64-unix/ntdll.so").path(percentEncoded: false))
+            == native.bridge!.runtimeNtdllSource.path(percentEncoded: false))
+        #expect(try Data(contentsOf: copied.appending(path: "x86_64-unix/ntdll.so")) == sourceNtdll)
+        #expect(try Data(contentsOf: root.appending(path: NativeWineBridge.runtimeNtdll)) == sourceNtdll)
+        for relative in NativeWineBridge.files {
+            #expect(try Data(contentsOf: copied.appending(path: relative)) == Data(contentsOf: bridge.appending(path: relative)))
+        }
+        let registered = try String(contentsOf: support.appending(path: "wine-tools"), encoding: .utf8)
+        #expect(registered.contains(raw.registryLine) && registered.contains(native.registryLine))
+        #expect(native.limitations.contains("Steam for Mac") && !native.limitations.contains("Windows Steam"))
+        let linkedNtdll = copied.appending(path: "x86_64-unix/ntdll.so")
+        try FileManager.default.removeItem(at: linkedNtdll)
+        try sourceNtdll.write(to: linkedNtdll)
+        #expect(throws: (any Error).self) {
+            try IndependentWine.register(descriptorAt: file, support: support, compatTools: tools, runScript: script)
+        }
+    }
+
+    @Test("Native descriptors refuse an ABI mismatch rather than falling back to raw Wine")
+    func nativeMismatch() throws {
+        let scratch = try scratchDirectory("native-mismatch")
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let root = try fixture(scratch)
+        let bridge = try nativeFixture(scratch, runtime: root)
+        try Data("different Wine ntdll".utf8).write(to: root.appending(path: NativeWineBridge.runtimeNtdll))
+        #expect(throws: (any Error).self) { try IndependentWine.validate(nativeDescriptor(root: root, bridge: bridge)) }
+        #expect(throws: (any Error).self) { try IndependentWine.validate(descriptor(root: root, id: "native-wine-11.17")) }
+    }
+
+    @Test("Native descriptors refuse corrupted bridge files and unknown source commits")
+    func nativeCorruption() throws {
+        let scratch = try scratchDirectory("native-corruption")
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let root = try fixture(scratch)
+        let bridge = try nativeFixture(scratch, runtime: root)
+        let manifestFile = bridge.appending(path: "bridge-manifest.json")
+        let manifestData = try Data(contentsOf: manifestFile)
+        let manifest = try JSONDecoder().decode(NativeWineBridgeManifest.self, from: manifestData)
+        let wrongCommit = NativeWineBridgeManifest(schemaVersion: 1, wineVersion: "11.17", wineCommit: "unknown",
+            runtimeNtdllSHA256: manifest.runtimeNtdllSHA256, files: manifest.files)
+        try JSONEncoder().encode(wrongCommit).write(to: manifestFile)
+        #expect(throws: (any Error).self) { try IndependentWine.validate(nativeDescriptor(root: root, bridge: bridge)) }
+        try manifestData.write(to: manifestFile)
+        try Data("corrupt".utf8).write(to: bridge.appending(path: NativeWineBridge.files[0]))
+        #expect(throws: (any Error).self) { try IndependentWine.validate(nativeDescriptor(root: root, bridge: bridge)) }
+    }
 }

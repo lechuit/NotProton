@@ -26,6 +26,14 @@ for (const form of Object.keys(FORMS)) {
   t.ok(experimental.some(x => typeof x.props.children === 'string'
     && x.props.children.includes('Experimental Wine engine') && x.props.children.includes('Windows Steam')),
        'independent Wine explains its SteamAPI limitation');
+  const nativeExperimental = walk(P({ details: details('CX_GRAPHICS_BACKEND=d3dmetal %command%',
+    { strCompatToolName: 'notproton-wine-native-wine-11.17' }) }));
+  t.ok(nativeExperimental.every(x => x.type !== 'Toggle' && x.type !== 'Dropdown'),
+       'native independent Wine also hides unsupported CrossOver controls');
+  t.ok(nativeExperimental.some(x => typeof x.props.children === 'string'
+    && x.props.children.includes('native SteamAPI bridge') && x.props.children.includes('Steam for Mac')
+    && !x.props.children.includes('Windows Steam')),
+       'native independent Wine explains its Mac Steam requirement');
 
   let r = nodes('');
   t.ok(toggles(r).length === 6 && sections(r).length === 3, 'automatic shows six toggles in three sections');

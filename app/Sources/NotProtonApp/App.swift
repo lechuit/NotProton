@@ -99,13 +99,13 @@ struct NotProtonApp: App {
         panel.allowedContentTypes = [.json]
         panel.allowsMultipleSelection = false
         panel.canChooseDirectories = false
-        panel.message = "Choose a Wine engine descriptor exported by Whisky Lab."
+        panel.message = "Choose an independent Wine engine descriptor."
         guard panel.runModal() == .OK, let file = panel.url else { return }
         let alert = NSAlert()
         do {
             let imported = try IndependentWine.register(descriptorAt: file)
             alert.messageText = "\(imported.display) is registered"
-            alert.informativeText = "Restart Steam, then choose this engine in the game's Compatibility settings.\n\n\(IndependentWine.limitations)"
+            alert.informativeText = "Restart Steam, then choose this engine in the game's Compatibility settings.\n\n\(imported.limitations)"
         } catch {
             alert.messageText = "Wine engine could not be imported"
             alert.informativeText = error.localizedDescription
