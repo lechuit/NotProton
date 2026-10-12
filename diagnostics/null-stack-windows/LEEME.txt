@@ -1,0 +1,14 @@
+Prueba pequeña para Windows de 64 bits
+
+Extrae todos los archivos y abre EJECUTAR.cmd. Duración habitual: menos de 30 segundos; hasta unos 40 si hay que cerrar ambos intentos.
+Al terminar se crea resultado-windows.json en esta misma carpeta.
+
+Compara un acceso inválido controlado con una pila válida y con una pila nula.
+El acceso se hace sólo dentro del proceso de prueba. El script cierra ese proceso
+si supera 15 segundos. No abre Aion ni Steam, no usa la red y no requiere
+administrador. No modifica aplicaciones, archivos del juego ni ajustes de Windows.
+La política de PowerShell del comando se aplica sólo a ese proceso.
+
+El código fuente está incluido. El ejecutable es una compilación local sin firma.
+La prueba en Wine/Mac devuelve éxito en control y se atasca en nullrsp.
+Necesitamos el resultado de Windows para comparar cómo entrega la excepción.

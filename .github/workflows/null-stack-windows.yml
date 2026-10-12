@@ -1,0 +1,52 @@
+name: Null stack Windows comparison
+
+on:
+  push:
+    branches: [diagnostics/null-stack-windows-20261012]
+    paths:
+      - '.github/workflows/null-stack-windows.yml'
+      - 'diagnostics/null-stack-windows/**'
+
+permissions:
+  contents: read
+
+jobs:
+  compare:
+    strategy:
+      fail-fast: false
+      matrix:
+        image: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.image }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - name: Verify the reviewed probe files
+        shell: pwsh
+        run: |
+          if ('${{ runner.arch }}' -ne 'X64') { throw 'This comparison needs x64 Windows.' }
+          $probeRoot = Join-Path $PWD 'diagnostics/null-stack-windows'
+          $hashes = Get-Content (Join-Path $probeRoot 'sha256.json') -Raw | ConvertFrom-Json
+          foreach ($entry in $hashes.PSObject.Properties) {
+            $actual = (Get-FileHash (Join-Path $probeRoot $entry.Name) -Algorithm SHA256).Hash.ToLowerInvariant()
+            if ($actual -ne $entry.Value) { throw ('Hash mismatch: ' + $entry.Name) }
+          }
+      - name: Run the two bounded exception cases
+        shell: pwsh
+        timeout-minutes: 2
+        run: |
+          & (Join-Path $PWD 'diagnostics/null-stack-windows/probar.ps1')
+          $result = Get-Content 'diagnostics/null-stack-windows/resultado-windows.json' -Raw | ConvertFrom-Json
+          if ($result.results.Count -ne 2) { throw 'Both comparison cases must have a result.' }
+          $control = $result.results | Where-Object mode -EQ 'control'
+          if ($control.exitCode -ne 0 -or $control.timedOut) { throw 'The valid-stack control failed.' }
+          $result | ConvertTo-Json -Depth 4
+      - name: Save only the comparison result
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: null-stack-${{ matrix.image }}
+          path: diagnostics/null-stack-windows/resultado-windows.json
+          if-no-files-found: warn
+          retention-days: 14
