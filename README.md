@@ -6,7 +6,7 @@ This fork can register an independent Wine runtime exported by Whisky Lab. In
 NotProton choose **Setup > Import Experimental Wine Engine**, or run:
 
 ```sh
-"/Applications/NotProton Trial.app/Contents/MacOS/NotProtonApp" --import-wine-engine "/absolute/path/runtime-descriptor.json"
+"/Applications/NotProton Lab.app/Contents/MacOS/NotProtonApp" --import-wine-engine "/absolute/path/runtime-descriptor.json"
 ```
 
 Restart Steam and select the engine marked **Experimental** in a game's
@@ -54,6 +54,11 @@ CrossOver's registry, so CrossOver setup and Steam startup preserve it. Run
 `swift test --package-path app --no-parallel --filter IndependentWineTests` for
 isolated checks. A functioning Wine runtime and Windows Steam/game smoke tests
 are still required to establish actual game support.
+
+The separately packaged NotProton Lab app sets `NPDisableUpdates=true` in its
+`Info.plist`, disabling Sparkle and hiding Check for Updates so an official release
+does not replace this experimental fork. Builds without that opt-in keep upstream
+update behavior. Update Lab manually from this fork.
 
 ## CrossOver 14-day trial support in this fork
 

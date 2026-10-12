@@ -1,11 +1,18 @@
+import Foundation
 import Sparkle
 
 @MainActor
 final class AppUpdater {
 
-    private let controller: SPUStandardUpdaterController
+    let isEnabled: Bool
+    private let controller: SPUStandardUpdaterController?
 
-    init() {
+    init(bundle: Bundle = .main) {
+        isEnabled = (bundle.object(forInfoDictionaryKey: "NPDisableUpdates") as? Bool) != true
+        guard isEnabled else {
+            controller = nil
+            return
+        }
         #if DEBUG
         let scheduling = false
         #else
@@ -19,8 +26,9 @@ final class AppUpdater {
     }
 
     func check() {
+        guard isEnabled else { return }
         #if !DEBUG
-        controller.checkForUpdates(nil)
+        controller?.checkForUpdates(nil)
         #endif
     }
 }

@@ -33,8 +33,10 @@ struct NotProtonApp: App {
     private var menus: some Commands {
         CommandGroup(replacing: .newItem) {}
 
-        CommandGroup(after: .appInfo) {
-            Button("Check for Updates…") { updater.check() }
+        if updater.isEnabled {
+            CommandGroup(after: .appInfo) {
+                Button("Check for Updates…") { updater.check() }
+            }
         }
 
         CommandGroup(after: .sidebar) {
