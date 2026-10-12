@@ -182,7 +182,9 @@ if [ "$mode" = native ]; then
   stage_bridge_file i386-windows/steamclient.dll "$prefix_steam/steamclient.dll"
   stage_bridge_file i386-windows/lsteamclient.dll "$WINEPREFIX/drive_c/windows/syswow64/lsteamclient.dll"
   stage_bridge_file i386-windows/steamclient.dll "$WINEPREFIX/drive_c/windows/syswow64/steamclient.dll"
-  export WINEDLLPATH="$prefix_steam:$bridge/x86_64-windows:$bridge/i386-windows:$bridge/x86_64-unix:$runtime/lib/wine"
+  # Wine appends the architecture directories and pairs each builtin PE with its Unix half.
+  # Listing the PE trigger directory or arch leaves can select a builtin with no paired .so.
+  export WINEDLLPATH="$bridge:$runtime/lib/wine"
   export WINEDLLOVERRIDES="steamclient=n;steamclient64=n;lsteamclient=b"
   export STEAM_COMPAT_CLIENT_INSTALL_PATH="$native_client"
   case "$verb" in

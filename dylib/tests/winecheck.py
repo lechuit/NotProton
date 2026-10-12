@@ -153,6 +153,7 @@ class WineRunnerTests(unittest.TestCase):
             '  mkdir -p "$WINEPREFIX/drive_c/windows/system32"; exit 0\n'
             'fi\n'
             'printf "override=[%s] appid=[%s] gameid=[%s] client=[%s]\\n" "$WINEDLLOVERRIDES" "${SteamAppId:-unset}" "${SteamGameId:-unset}" "$STEAM_COMPAT_CLIENT_INSTALL_PATH"\n'
+            'printf "dllpath=[%s]\\n" "$WINEDLLPATH"\n'
             'for a in "$@"; do printf "passed=[%s]\\n" "$a"; done\n'
             'exit "${FAKE_WINE_STATUS:-0}"\n')
         ntdll = self.runtime / "lib/wine/x86_64-unix/ntdll.so"
@@ -199,6 +200,12 @@ class WineRunnerTests(unittest.TestCase):
         self.assertIn("passed=[/game folder/game.exe]", log)
         self.assertIn("passed=[literal $(`text`)]", log)
         self.assertIn("override=[steamclient=n;steamclient64=n;lsteamclient=b] appid=[3719590]", log)
+        self.assertIn(f"dllpath=[{self.bridge}:{self.runtime / 'lib/wine'}]", log)
+        dll_line = next(line for line in log.splitlines() if line.startswith("dllpath=["))
+        self.assertNotIn(str(steam), dll_line)
+        self.assertNotIn("x86_64-windows", dll_line)
+        self.assertNotIn("i386-windows", dll_line)
+        self.assertNotIn("x86_64-unix", dll_line)
         self.assertIn("Experimental native SteamAPI bridge", log)
         self.assertNotIn("No native SteamAPI bridge.", log)
 
