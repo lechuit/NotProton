@@ -29,7 +29,7 @@ struct IndependentWineDescriptor: Codable, Sendable, Equatable {
 enum IndependentWine {
     static let step = "Import experimental Wine engine"
     static let limitations = "Experimental raw Wine backend. No native SteamAPI bridge, Steam Input bridge, or automatic graphics installation. Games requiring SteamAPI need Windows Steam running inside this backend's own prefix."
-    static let nativeLimitations = "Experimental native SteamAPI bridge for Wine 11.17. Keep Steam for Mac running. No Steam Input bridge, overlay, or automatic graphics installation. Game and anti-cheat compatibility are unverified."
+    static let nativeLimitations = "Experimental native SteamAPI bridge for a matching Wine runtime. Keep Steam for Mac running. No Steam Input bridge, overlay, or automatic graphics installation. Game and anti-cheat compatibility are unverified."
 
     struct Validated: Sendable {
         let descriptor: IndependentWineDescriptor

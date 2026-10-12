@@ -1,7 +1,7 @@
-# Native Steam bridge for stock Wine 11.17
+# Native Steam bridge for matching stock Wine
 
 This experiment forwards the native Windows DLL names `steamclient64.dll` and
-`steamclient.dll` to a separately rebuilt Wine 11.17 `lsteamclient.dll`. The Unix
+`steamclient.dll` to a separately rebuilt Wine `lsteamclient.dll`. The Unix
 half of LSC opens the already installed macOS Steam `steamclient.dylib`.
 It avoids CrossOver's binary `ntdll` detour and keeps the stock Wine runtime intact.
 
@@ -15,11 +15,14 @@ game expects them to reside inside its `steamclient` module.
 ## Build
 
 First rebuild both LSC PE halves and the x86_64 Unix half against the pinned Wine
-11.17 headers. Do not substitute an old CrossOver `ntdll` or transplant its patch.
+Devel 11.17 or 11.18 headers and that runtime's unchanged ntdll. See
+[the component build guide](BUILD-LSTEAMCLIENT.md) for the exact source pins.
+Do not substitute an old CrossOver `ntdll` or transplant its patch.
 Then pass those PE files and the workspace-local LLVM MinGW toolchain explicitly:
 
 ```sh
 sh bridge/wine-native/build.sh \
+  --wine-version 11.18 \
   --toolchain /absolute/path/to/llvm-mingw \
   --lsteamclient-x64 /absolute/path/to/x86_64-windows/lsteamclient.dll \
   --lsteamclient-x86 /absolute/path/to/i386-windows/lsteamclient.dll \
@@ -30,6 +33,9 @@ sh bridge/wine-native/build.sh \
 The i386 option is optional while validating the 64-bit path. All output stays in
 the specified build directory. Building does not install libraries, touch Steam,
 start a game, change accounts, or rewrite a user's prefix.
+The version option accepts only `11.17` (default) or `11.18` and compiles that exact
+expected version into both probes. Use the same choice as the LSC build; changing
+this option does not make an older LSC binary compatible with a newer runtime.
 
 Run the regression checks against each actual built forwarder:
 
@@ -47,7 +53,9 @@ PE files. Repeat with the i386 LSC, `steamclient.dll`, and `--module steamclient
 ## Validate a separately staged runtime
 
 Use an isolated fresh prefix and an ABI-checked bridge directory with architecture
-subdirectories. Keep the official Wine 11.17 `ntdll.so` and `ntdll.dll` unchanged.
+subdirectories. Keep the selected official Wine runtime's `ntdll.so` and
+`ntdll.dll` unchanged. The staged Unix bridge must link to its canonical runtime
+ntdll.so using the verified symlink described in the component build guide.
 Set `WINEDLLPATH` to the **parent bridge directory**, `lsteamclient=b`, and the
 forwarding DLLs to `n`. Wine adds the `x86_64-windows`, `i386-windows`, and
 `x86_64-unix` suffixes itself. Do not add those subdirectories or the prefix's
@@ -72,6 +80,12 @@ SteamClient023 interface, a native Steam user, login state, and whether the Aion
 subscription is visible. It releases the pipe/user it created. It never requests
 or prints account identifiers, credentials, authentication tickets, or callback
 bodies. It does not stop or restart the existing Steam client.
+Before registering a new version, verify the vendor archive digest, selected Wine
+source commit, runtime version and ntdll hash, component provenance and all PE
+forwarders. In a new prefix, finish `cmd.exe /c ver` and run both architectures
+through the final `steam.exe` launcher path; require both probes to return zero
+with the intended native session available. Use a new engine id such as
+`wine-11.18` so the existing 11.17 runtime and prefixes remain available.
 
 Success demonstrates the bridge can contact the current macOS Steam session.
 It does not establish that Aion 2 starts, its graphics backend works, every Steam

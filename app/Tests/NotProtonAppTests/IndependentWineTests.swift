@@ -101,12 +101,13 @@ struct IndependentWineTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: victim.path(percentEncoded: false)).isEmpty)
     }
 
-    private func nativeFixture(_ scratch: URL, runtime: URL) throws -> URL {
+    private func nativeFixture(_ scratch: URL, runtime: URL, version: String = "11.17",
+                               commit: String = "36b6a2cf679fb395f668a917b76537190e212d9c") throws -> URL {
         let bridge = scratch.appending(path: "matching native bridge")
         try FileManager.default.createDirectory(at: bridge, withIntermediateDirectories: true)
         let ntdll = runtime.appending(path: NativeWineBridge.runtimeNtdll)
         try FileManager.default.createDirectory(at: ntdll.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Data("matching stock ntdll".utf8).write(to: ntdll)
+        try Data("matching stock ntdll \(version)".utf8).write(to: ntdll)
         var files: [String: String] = [:]
         for relative in NativeWineBridge.files {
             let file = bridge.appending(path: relative)
@@ -114,14 +115,14 @@ struct IndependentWineTests {
             try Data("compiled bridge: \(relative)".utf8).write(to: file)
             files[relative] = try Digest.sha256(of: file)
         }
-        let manifest = NativeWineBridgeManifest(schemaVersion: 1, wineVersion: "11.17",
-            wineCommit: NativeWineBridge.wineCommit, runtimeNtdllSHA256: try Digest.sha256(of: ntdll), files: files)
+        let manifest = NativeWineBridgeManifest(schemaVersion: 1, wineVersion: version,
+            wineCommit: commit, runtimeNtdllSHA256: try Digest.sha256(of: ntdll), files: files)
         try JSONEncoder().encode(manifest).write(to: bridge.appending(path: "bridge-manifest.json"))
         return bridge
     }
 
-    private func nativeDescriptor(root: URL, bridge: URL) -> IndependentWineDescriptor {
-        IndependentWineDescriptor(schemaVersion: 2, id: "wine-11.17", displayName: "Wine 11.17", backend: "wine",
+    private func nativeDescriptor(root: URL, bridge: URL, version: String = "11.17") -> IndependentWineDescriptor {
+        IndependentWineDescriptor(schemaVersion: 2, id: "wine-\(version)", displayName: "Wine \(version)", backend: "wine",
             root: root.path(percentEncoded: false), wineLoader: "bin/wine", wineServer: "bin/wineserver",
             steamAPI: "native", bridgeRoot: bridge.path(percentEncoded: false))
     }
@@ -160,6 +161,81 @@ struct IndependentWineTests {
         try sourceNtdll.write(to: linkedNtdll)
         #expect(throws: (any Error).self) {
             try IndependentWine.register(descriptorAt: file, support: support, compatTools: tools, runScript: script)
+        }
+    }
+
+    @Test("Wine 11.18 registers separately while preserving the Wine 11.17 tool and runtime")
+    func nativeVersionUpgrade() throws {
+        let scratch = try scratchDirectory("native-version-upgrade")
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let olderScratch = scratch.appending(path: "11.17")
+        let newerScratch = scratch.appending(path: "11.18")
+        let olderRoot = try fixture(olderScratch)
+        let newerRoot = try fixture(newerScratch)
+        let olderBridge = try nativeFixture(olderScratch, runtime: olderRoot)
+        let newerBridge = try nativeFixture(newerScratch, runtime: newerRoot, version: "11.18",
+            commit: "7b3fff76fa5178f6ce0141b2c776afa2a822f101")
+        let file = scratch.appending(path: "engine.json")
+        let script = scratch.appending(path: "run-wine")
+        try Data("#!/bin/sh\n".utf8).write(to: script)
+        let support = scratch.appending(path: "support")
+        let tools = scratch.appending(path: "tools")
+        try JSONEncoder().encode(nativeDescriptor(root: olderRoot, bridge: olderBridge)).write(to: file)
+        let older = try IndependentWine.register(descriptorAt: file, support: support, compatTools: tools, runScript: script)
+        let olderRecordFile = support.appending(path: "runners/wine-native-wine-11.17/runtime.v1")
+        let olderRecord = try Data(contentsOf: olderRecordFile)
+        let olderNtdll = try Data(contentsOf: olderRoot.appending(path: NativeWineBridge.runtimeNtdll))
+        let newerNtdll = try Data(contentsOf: newerRoot.appending(path: NativeWineBridge.runtimeNtdll))
+        try JSONEncoder().encode(nativeDescriptor(root: newerRoot, bridge: newerBridge, version: "11.18")).write(to: file)
+        let newer = try IndependentWine.register(descriptorAt: file, support: support, compatTools: tools, runScript: script)
+        #expect(newer.name == "notproton-wine-native-wine-11.18")
+        #expect(newer.runtimeRecord.hasPrefix("2\nnative-wine-11.18\n"))
+        #expect(newer.bridge?.manifest.wineVersion == "11.18")
+        #expect(newer.bridge?.manifest.wineCommit == "7b3fff76fa5178f6ce0141b2c776afa2a822f101")
+        let managed = support.appending(path: "runners/wine-native-wine-11.18/bridge-\(newer.bridge!.identity)")
+        #expect(try FileManager.default.destinationOfSymbolicLink(atPath: managed.appending(path: "x86_64-unix/ntdll.so").path(percentEncoded: false))
+            == newer.bridge!.runtimeNtdllSource.path(percentEncoded: false))
+        #expect(try Data(contentsOf: olderRecordFile) == olderRecord)
+        #expect(try Data(contentsOf: olderRoot.appending(path: NativeWineBridge.runtimeNtdll)) == olderNtdll)
+        #expect(try Data(contentsOf: newerRoot.appending(path: NativeWineBridge.runtimeNtdll)) == newerNtdll)
+        let registry = try String(contentsOf: support.appending(path: "wine-tools"), encoding: .utf8)
+        #expect(registry.contains(older.registryLine) && registry.contains(newer.registryLine))
+        #expect(newer.limitations == older.limitations)
+        #expect(!newer.limitations.contains("11.17"))
+        try Data("updated 11.18 ntdll".utf8).write(to: newerRoot.appending(path: NativeWineBridge.runtimeNtdll))
+        #expect(throws: (any Error).self) {
+            try IndependentWine.validate(nativeDescriptor(root: newerRoot, bridge: newerBridge, version: "11.18"))
+        }
+        #expect(try Data(contentsOf: olderRecordFile) == olderRecord)
+    }
+
+    @Test("Native imports reject mixed source versions, Staging and unapproved versions before registration")
+    func nativeVersionSourcePairs() throws {
+        let scratch = try scratchDirectory("native-version-source")
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let root = try fixture(scratch)
+        let bridge = try nativeFixture(scratch, runtime: root)
+        let manifestFile = bridge.appending(path: "bridge-manifest.json")
+        let manifest = try JSONDecoder().decode(NativeWineBridgeManifest.self, from: Data(contentsOf: manifestFile))
+        let wine17 = "36b6a2cf679fb395f668a917b76537190e212d9c"
+        let wine18 = "7b3fff76fa5178f6ce0141b2c776afa2a822f101"
+        let invalidPairs = [("11.17", wine18), ("11.18", wine17), ("11.18", "unknown"),
+                            ("11.18 (Staging)", wine18), ("wine-11.18", wine18), ("11.19", wine18)]
+        let descriptorFile = scratch.appending(path: "engine.json")
+        try JSONEncoder().encode(nativeDescriptor(root: root, bridge: bridge)).write(to: descriptorFile)
+        let support = scratch.appending(path: "support")
+        let tools = scratch.appending(path: "tools")
+        let script = scratch.appending(path: "run-wine")
+        try Data("#!/bin/sh\n".utf8).write(to: script)
+        for (version, commit) in invalidPairs {
+            let invalid = NativeWineBridgeManifest(schemaVersion: 1, wineVersion: version, wineCommit: commit,
+                runtimeNtdllSHA256: manifest.runtimeNtdllSHA256, files: manifest.files)
+            try JSONEncoder().encode(invalid).write(to: manifestFile)
+            #expect(throws: (any Error).self) {
+                try IndependentWine.register(descriptorAt: descriptorFile, support: support, compatTools: tools, runScript: script)
+            }
+            #expect(!FileManager.default.fileExists(atPath: support.path(percentEncoded: false)))
+            #expect(!FileManager.default.fileExists(atPath: tools.path(percentEncoded: false)))
         }
     }
 

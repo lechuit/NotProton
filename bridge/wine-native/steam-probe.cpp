@@ -6,6 +6,10 @@
 #include <cstdio>
 #include <cstring>
 
+#ifndef NP_EXPECTED_WINE_VERSION
+#define NP_EXPECTED_WINE_VERSION "11.17"
+#endif
+
 #define STEAM_API_NODLL
 #include "steam_api.h"
 
@@ -25,7 +29,7 @@ int main()
     }
     const char *version = get_version();
     std::printf("wine_version=%s\n", version);
-    if (std::strcmp(version, "11.17"))
+    if (std::strcmp(version, NP_EXPECTED_WINE_VERSION))
     {
         std::printf("error=unexpected_wine_version\n");
         return 11;

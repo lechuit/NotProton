@@ -11,7 +11,10 @@ struct NativeWineBridgeManifest: Codable, Sendable {
 
 enum NativeWineBridge {
     static let identitySalt = "ntdll-runtime-link-v1\n"
-    static let wineCommit = "36b6a2cf679fb395f668a917b76537190e212d9c"
+    static let sourceCommitsByVersion = [
+        "11.17": "36b6a2cf679fb395f668a917b76537190e212d9c",
+        "11.18": "7b3fff76fa5178f6ce0141b2c776afa2a822f101",
+    ]
     static let runtimeNtdll = "lib/wine/x86_64-unix/ntdll.so"
     static let files = [
         "x86_64-windows/lsteamclient.dll", "x86_64-windows/steamclient64.dll", "x86_64-windows/steam.exe",
@@ -42,10 +45,11 @@ enum NativeWineBridge {
         let root = URL(filePath: rootPath, directoryHint: .isDirectory)
         let manifestFile = root.appending(path: "bridge-manifest.json")
         let manifest = try JSONDecoder().decode(NativeWineBridgeManifest.self, from: Data(contentsOf: manifestFile))
-        guard manifest.schemaVersion == 1, manifest.wineVersion == "11.17", manifest.wineCommit == wineCommit,
+        guard manifest.schemaVersion == 1,
+              sourceCommitsByVersion[manifest.wineVersion] == manifest.wineCommit,
               Set(manifest.files.keys) == Set(files), validHash(manifest.runtimeNtdllSHA256),
               manifest.files.values.allSatisfy(validHash) else {
-            try refuse("Native bridge manifest is not the supported Wine 11.17 build and fixed file set.")
+            try refuse("Native bridge manifest must use a supported Wine Devel 11.17 or 11.18 source commit and the fixed file set.")
         }
         for relative in files {
             let file = root.appending(path: relative)

@@ -41,9 +41,9 @@ Launchers that exit before handing off to a child game are not yet tracked.
 
 ### Experimental native SteamAPI mode
 
-Version 2 adds a separately rebuilt native SteamAPI bridge for the exact supported
-Wine 11.17 runtime. Steam for Mac must be running and signed in; this mode does
-not install or run Windows Steam. It still provides no Steam Input or overlay
+Version 2 adds a separately rebuilt native SteamAPI bridge for a matching
+Wine Devel 11.17 or 11.18 runtime. Steam for Mac must be running and signed in;
+this mode does not install or run Windows Steam. It still provides no Steam Input or overlay
 bridge and installs no graphics translation libraries. A successful SteamAPI
 probe does not establish Aion 2 or anti-cheat compatibility.
 
@@ -61,13 +61,26 @@ probe does not establish Aion 2 or anti-cheat compatibility.
 }
 ```
 
-The bridge root contains `bridge-manifest.json` with schema version 1, Wine version
-`11.17`, source commit `36b6a2cf679fb395f668a917b76537190e212d9c`, the exact
-runtime `ntdll.so` SHA256, and hashes for this fixed file set:
+The bridge root contains `bridge-manifest.json` with schema version 1, one of the
+following exact Wine version/source pairs, the runtime `ntdll.so` SHA256, and
+hashes for the fixed file set below. Staging and other versions are refused.
+
+| Wine Devel version | Wine source commit |
+| --- | --- |
+| 11.17 | `36b6a2cf679fb395f668a917b76537190e212d9c` |
+| 11.18 | `7b3fff76fa5178f6ce0141b2c776afa2a822f101` |
 
 - `x86_64-windows/lsteamclient.dll`, `steamclient64.dll`, and `steam.exe`
 - `i386-windows/lsteamclient.dll` and `steamclient.dll`
 - `x86_64-unix/lsteamclient.so`
+
+For 11.18 use a separate runtime, bridge payload and descriptor with a new id such
+as `wine-11.18`; rebuild both LSC architectures and the SDK probes against that
+version's source and stock runtime before importing. Changing the manifest version
+or reusing an 11.17 bridge is insufficient. Existing 11.17 tools and prefixes can
+remain registered. See [the bridge build guide](bridge/wine-native/BUILD-LSTEAMCLIENT.md)
+for the pinned build and probe checks. This version support does not establish that
+11.18 starts Aion 2.
 
 The importer copies these bridge files into an immutable managed directory and
 links its Unix half to the **canonical runtime ntdll.so**. A separate copy of that

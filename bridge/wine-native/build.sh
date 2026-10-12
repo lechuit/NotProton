@@ -1,6 +1,6 @@
 #!/bin/sh
 # Build tiny native PE forwarding DLLs and a harmless Steam session probe.
-# The matching Wine 11.17 LSC halves must already have been built separately.
+# The selected matching Wine LSC halves must already have been built separately.
 set -eu
 
 here=$(cd "$(dirname "$0")" && pwd)
@@ -9,6 +9,7 @@ lsc_x64=""
 lsc_x86=""
 sdk=""
 out=""
+wine_version=11.17
 while [ "$#" -gt 0 ]; do
     [ "$#" -ge 2 ] || { echo "Missing value for $1" >&2; exit 1; }
     case "$1" in
@@ -17,12 +18,17 @@ while [ "$#" -gt 0 ]; do
         --lsteamclient-x86) lsc_x86=$2 ;;
         --sdk-root) sdk=$2 ;;
         --output) out=$2 ;;
+        --wine-version) wine_version=$2 ;;
         *) echo "Unknown argument: $1" >&2; exit 1 ;;
     esac
     shift 2
 done
+case "$wine_version" in
+    11.17|11.18) ;;
+    *) echo "Unsupported --wine-version: use Devel 11.17 or 11.18 (not Staging)." >&2; exit 1 ;;
+esac
 [ -n "$toolchain" ] && [ -n "$lsc_x64" ] && [ -n "$sdk" ] && [ -n "$out" ] || {
-    echo "Required: --toolchain <llvm-mingw-root> --lsteamclient-x64 <dll> --sdk-root <Steamworks165> --output <dir>" >&2
+    echo "Required: --toolchain <llvm-mingw-root> --lsteamclient-x64 <dll> --sdk-root <Steamworks165> --output <dir>; optional --wine-version 11.17|11.18 (default: 11.17)" >&2
     exit 1
 }
 [ -f "$sdk/steam_api.h" ] || { echo "Steamworks SDK headers missing" >&2; exit 1; }
@@ -49,6 +55,7 @@ build_arch() {
     python3 "$here/forwarders.py" verify "$reference" "$directory/$module.dll" \
         --module "$module" --report "$directory/$module-verification.json"
     "$toolchain/bin/$compiler++" -std=c++17 -O2 -static -I"$sdk" \
+        "-DNP_EXPECTED_WINE_VERSION=\"$wine_version\"" \
         "$here/steam-probe.cpp" -o "$directory/steam-probe.exe"
 }
 
