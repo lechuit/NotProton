@@ -147,7 +147,11 @@ class WineRunnerTests(unittest.TestCase):
 
     def native_mode(self):
         self.loader.write_text('#!/bin/sh\n'
-            'if [ "$1" = wineboot ]; then mkdir -p "$WINEPREFIX"; touch "$WINEPREFIX/system.reg"; exit 0; fi\n'
+            'if [ "$1" = cmd.exe ] && [ "$2" = /c ] && [ "$3" = ver ]; then\n'
+            '  printf "readiness command completed\\n"\n'
+            '  [ "${FAKE_BOOT_STATUS:-0}" = 0 ] || exit "$FAKE_BOOT_STATUS"\n'
+            '  mkdir -p "$WINEPREFIX/drive_c/windows/system32"; exit 0\n'
+            'fi\n'
             'printf "override=[%s] appid=[%s] gameid=[%s] client=[%s]\\n" "$WINEDLLOVERRIDES" "${SteamAppId:-unset}" "${SteamGameId:-unset}" "$STEAM_COMPAT_CLIENT_INSTALL_PATH"\n'
             'for a in "$@"; do printf "passed=[%s]\\n" "$a"; done\n'
             'exit "${FAKE_WINE_STATUS:-0}"\n')
@@ -277,6 +281,25 @@ class WineRunnerTests(unittest.TestCase):
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Only the runtime ntdll link", result.stderr)
         self.assertFalse(self.data.exists())
+
+    def test_native_readiness_does_not_require_immediate_registry_persistence(self):
+        self.native_mode()
+        result = self.run_tool("waitforexitandrun", "/game.exe")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertFalse((self.prefix_root / "pfx/system.reg").exists())
+        log = (self.prefix_root / "notproton-wine.log").read_text()
+        self.assertIn("readiness command completed", log)
+        self.assertIn("passed=[/game.exe]", log)
+
+    def test_native_failed_readiness_prevents_game_and_bridge_staging(self):
+        self.native_mode()
+        self.env["FAKE_BOOT_STATUS"] = "31"
+        result = self.run_tool("waitforexitandrun", "/game.exe")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("Wine prefix readiness check failed", result.stderr)
+        self.assertFalse((self.prefix_root / "pfx/drive_c/Program Files (x86)/Steam/steam.exe").exists())
+        log = (self.prefix_root / "notproton-wine.log").read_text()
+        self.assertNotIn("passed=[/game.exe]", log)
 
 
 if __name__ == "__main__":

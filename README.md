@@ -81,6 +81,8 @@ prefix. Raw descriptor ids beginning `native-` are reserved to prevent collision
 
 For game launches the wrapper initializes Wine, stages the bridge into the prefix,
 and launches the rebuilt `steam.exe` helper with the original target and arguments.
+Prefix readiness is checked by completing `cmd.exe /c ver`; the wrapper does not
+require registry files to have been flushed immediately by wineserver.
 The helper publishes Steam registry discovery data and forwards SteamAPI calls to
 the native client; it is not the Windows Steam client. `runinprefix` remains a direct
 Wine helper verb. Missing/mismatched bridge files or native client libraries cause
