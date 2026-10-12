@@ -151,6 +151,7 @@ class WineRunnerTests(unittest.TestCase):
         self.loader.write_text('#!/bin/sh\n'
             'if [ "$1" = cmd.exe ] && [ "$2" = /c ] && [ "$3" = ver ]; then\n'
             '  printf "readiness command completed\\n"\n'
+            '  printf "readiness_override=[%s] readiness_dllpath=[%s]\\n" "${WINEDLLOVERRIDES-unset}" "${WINEDLLPATH-unset}"\n'
             '  [ "${FAKE_BOOT_STATUS:-0}" = 0 ] || exit "$FAKE_BOOT_STATUS"\n'
             '  mkdir -p "$WINEPREFIX/drive_c/windows/system32"; exit 0\n'
             'fi\n'
@@ -211,6 +212,25 @@ class WineRunnerTests(unittest.TestCase):
         self.assertNotIn("x86_64-unix", dll_line)
         self.assertIn("Experimental native SteamAPI bridge", log)
         self.assertNotIn("No native SteamAPI bridge.", log)
+
+    def test_native_optional_installers_disabled_only_for_readiness(self):
+        self.native_mode()
+        self.env["WINEDLLOVERRIDES"] = "inherited=n;mscoree=n;steamclient=b"
+        for verb in ("run", "runinprefix", "waitforexitandrun"):
+            with self.subTest(verb=verb):
+                result = self.run_tool(verb, "/target folder/program.exe", "literal argument")
+                self.assertEqual(result.returncode, 0, result.stderr)
+                log = (self.prefix_root / "notproton-wine.log").read_text().rsplit("=== experimental Wine", 1)[-1]
+                readiness = [line for line in log.splitlines() if line.startswith("readiness_override=")]
+                self.assertEqual(readiness, ["readiness_override=[mscoree,mshtml=] readiness_dllpath=[unset]"])
+                target = [line for line in log.splitlines() if line.startswith("override=")]
+                self.assertEqual(len(target), 1)
+                self.assertTrue(target[0].startswith("override=[steamclient=n;steamclient64=n;lsteamclient=b] "))
+                self.assertNotIn("mscoree", target[0])
+                self.assertNotIn("mshtml", target[0])
+                self.assertNotIn("inherited", log)
+                self.assertIn("passed=[/target folder/program.exe]", log)
+                self.assertIn("passed=[literal argument]", log)
 
     def check_rosetta_avx_choices(self):
         for supplied in (None, "0", "1", "", "2", "true", "$(literal)"):

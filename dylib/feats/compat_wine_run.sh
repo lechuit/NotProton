@@ -178,7 +178,8 @@ if [ "$mode" = native ]; then
   prefix_steam="$WINEPREFIX/drive_c/Program Files (x86)/Steam"
   # Wine can defer registry-file persistence until wineserver flushes. Completing
   # an actual Windows program verifies readiness without waiting for that flush.
-  "$loader" cmd.exe /c ver >> "$log" 2>&1 || fail "Wine prefix readiness check failed; see the Wine log."
+  # Optional Mono/Gecko installers are not needed for this readiness command.
+  WINEDLLOVERRIDES='mscoree,mshtml=' "$loader" cmd.exe /c ver >> "$log" 2>&1 || fail "Wine prefix readiness check failed; see the Wine log."
   for directory in "$WINEPREFIX/drive_c" "$WINEPREFIX/drive_c/Program Files (x86)" \
     "$prefix_steam" "$WINEPREFIX/drive_c/windows" "$WINEPREFIX/drive_c/windows/syswow64"; do
     [ ! -L "$directory" ] || fail "Native bridge prefix directory is a symlink."
