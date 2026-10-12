@@ -308,7 +308,7 @@ static const np_gate_t g_gates_forcetool[] = {
       "selectedOption:t.strCompatToolName,onChange:e=>SteamClient.Apps.SpecifyCompatTool"
       "(t.unAppID,e.data)})]})",
       "return(0,i.jsxs)(i.Fragment,{children:[0!=a.length&&(0,i.jsx)(_r,{label:(0,A.we)"
-      "(\"#AppProperties_CompatilibityForceTool\"),checked:g,onChange:C,disabled:!r||0===a.length}),"
+      "(\"#AppProperties_CompatilibityForceTool\"),checked:g,onChange:C,disabled:0===a.length}),"
       "g&&a.length>0&&(0,i.jsx)(c.m,{strClassName:K().TopGap+\" MSCXNoBottomGap\",rgOptions:d,"
       "selectedOption:t.strCompatToolName,onChange:e=>SteamClient.Apps.SpecifyCompatTool"
       "(t.unAppID,e.data)})]})", 1 },
@@ -375,7 +375,7 @@ static const np_gate_t g_fixes[] = {
       "l=a.length?a[0].strToolName:\"\"",
       "r=(0,s.q3)(()=>u.rV.settings.bCompatEnabled),a=function(e,t){const[r,i]=n.useState([]);"
       "return n.useEffect(()=>{SteamClient.Apps.GetAvailableCompatTools(e).then(i)},[e,t]),r}"
-      "(t.unAppID,r),o=r&&!!t.strCompatToolName&&t.nCompatToolPriority==h.JN,"
+      "(t.unAppID,r),o=!!t.strCompatToolName&&t.nCompatToolPriority==h.JN,"
       "l=a.length?(a.find(e=>e.strToolName===u.rV.settings.strCompatTool)||a[0]).strToolName:\"\"",
       1 },
     // Shows the default tool picker before a default has been saved

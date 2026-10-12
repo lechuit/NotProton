@@ -731,6 +731,8 @@ void np_compat_set_mapping_fn(uintptr_t set_compat_tool_mapping) {
     g_set_mapping = (fn_SetCompatToolMapping)set_compat_tool_mapping;
 }
 
+bool np_compat_mapping_api_ready(void) { return g_set_mapping != NULL; }
+
 void np_compat_map_tool(void *compat_mgr, uint32_t appid, const char *tool_name) {
     if (!g_set_mapping || !compat_mgr || !tool_name) {
         NP_ERR("np_compat_map_tool: app %u cannot be mapped to %s", appid,
@@ -780,6 +782,17 @@ static void *find_tool(void *compat_mgr, const char *wanted) {
         const char *name = *(const char **)(entry + COMPAT_TOOL_NAME_OFF);
         if (name && strcmp(name, wanted) == 0)
             return entry;
+    }
+    return NULL;
+}
+
+const char *np_compat_registered_name(void *compat_mgr, const char *requested) {
+    if (!compat_mgr || !requested) return NULL;
+    load_tool_list_once();
+    for (int i = 0; i < g_tool_count; i++) {
+        const char *canonical = g_tools[i].name;
+        if (strcmp(canonical, requested) == 0 && find_tool(compat_mgr, canonical))
+            return canonical;
     }
     return NULL;
 }

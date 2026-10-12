@@ -8,6 +8,7 @@
 #include <stdbool.h>
 #include <signal.h>
 #include <string.h>
+#include <pthread.h>
 
 static void *orig_CCompatManager_Init = NULL;
 typedef void *(*fn_CCompatManager_Init)(void *self, void *arg1);
@@ -79,6 +80,15 @@ static void *hook_FindToolForTargetApp(void *self, uint32_t appid) {
     if (mapping && strcmp(mapping, NP_COMPAT_TOOL_NONE) == 0)
         return NULL;
 
+    // A requested experimental engine must never silently run through CrossOver
+    // if Steam cannot resolve it. The user can select another tool explicitly.
+    if (mapping && strncmp(mapping, "notproton-wine-", 15) == 0) {
+        static const char once = 0;
+        if (np_log_first_hit(&once, appid))
+            NP_WARN("compat: app %u explicitly selected Wine, but that tool did not resolve; launch refused", appid);
+        return NULL;
+    }
+
     if (!np_compat_would_force(self, appid))
         return NULL;
 
@@ -93,6 +103,37 @@ static void *orig_InternalSpecifyCompatTool = NULL;
 typedef uint64_t (*fn_InternalSpecifyCompatTool)(void *self, uint64_t appid,
                                                  const char *name, void *config,
                                                  int priority);
+static _Thread_local int np_mapping_repair;
+// SetCompatToolMapping queues a job for nonzero app IDs. TLS alone cannot stop
+// that job from repeatedly retrying an original callback that keeps discarding
+// the same choice. Each manager/app/tool receives at most one repair attempt per
+// Steam process; every later user request still reaches the original callback.
+static pthread_mutex_t np_repair_lock = PTHREAD_MUTEX_INITIALIZER;
+static struct {
+    void *manager;
+    uint32_t appid;
+    const char *tool;
+} np_repair_attempts[128];
+
+static int claim_mapping_repair(void *manager, uint32_t appid, const char *tool) {
+    int slot = -1;
+    pthread_mutex_lock(&np_repair_lock);
+    for (size_t i = 0; i < sizeof(np_repair_attempts) / sizeof(np_repair_attempts[0]); i++) {
+        if (!np_repair_attempts[i].manager) { if (slot < 0) slot = (int)i; continue; }
+        if (np_repair_attempts[i].manager == manager && np_repair_attempts[i].appid == appid
+            && strcmp(np_repair_attempts[i].tool, tool) == 0) {
+            pthread_mutex_unlock(&np_repair_lock);
+            return 0;
+        }
+    }
+    if (slot >= 0) {
+        np_repair_attempts[slot].manager = manager;
+        np_repair_attempts[slot].appid = appid;
+        np_repair_attempts[slot].tool = tool;
+    }
+    pthread_mutex_unlock(&np_repair_lock);
+    return slot >= 0;
+}
 
 // Every mapping change arrives here (global default/per-app), so this is
 // where the page is notified.
@@ -107,7 +148,35 @@ static uint64_t hook_InternalSpecifyCompatTool(void *self, uint64_t appid,
         return 0;
     }
 
+    const char *requested = np_compat_registered_name(self, name);
+    const char *before = appid <= UINT32_MAX
+                       ? np_compat_app_mapping(self, (uint32_t)appid) : NULL;
+    const char *known_before = np_compat_registered_name(self, before);
+    NP_LOG("compat: select app %u tool=%s priority=%d before=%s", (uint32_t)appid,
+           requested ? requested : (name && !*name ? "default" : "unregistered"),
+           priority, known_before ? known_before : (before ? "other" : "default"));
+
     uint64_t result = orig(self, appid, name, config, priority);
+    const char *after = appid <= UINT32_MAX
+                      ? np_compat_app_mapping(self, (uint32_t)appid) : NULL;
+    int repair_requested = 0;
+    // The old macOS Apps.SpecifyCompatTool path can discard a choice even though
+    // the injected picker offers it. Repair only an explicit, installed native
+    // Wine choice, through Steam's own mapping API at per-app priority 250.
+    if (!np_mapping_repair && appid && appid <= UINT32_MAX && requested
+        && strncmp(requested, "notproton-wine-native-", 22) == 0
+        && (!after || strcmp(after, requested) != 0)
+        && np_compat_mapping_api_ready()
+        && claim_mapping_repair(self, (uint32_t)appid, requested)) {
+        np_mapping_repair = 1;
+        np_compat_map_tool(self, (uint32_t)appid, requested);
+        np_mapping_repair = 0;
+        after = np_compat_app_mapping(self, (uint32_t)appid);
+        repair_requested = 1;
+    }
+    const char *known_after = np_compat_registered_name(self, after);
+    NP_LOG("compat: selected app %u mapping=%s repair_requested=%d", (uint32_t)appid,
+           known_after ? known_after : (after ? "other" : "default"), repair_requested);
     np_compatsvc_state_changed();
     return result;
 }

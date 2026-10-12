@@ -99,6 +99,7 @@ const char *np_compat_app_mapping(void *compat_mgr, uint32_t appid);
 // to the client default. Appid zero sets the global default at lower priority.
 void np_compat_set_mapping_fn(uintptr_t set_compat_tool_mapping);
 void np_compat_map_tool(void *compat_mgr, uint32_t appid, const char *tool_name);
+bool np_compat_mapping_api_ready(void);
 
 // CCompatManager::YldRegisterTool, resolved at install time.
 void np_compat_set_register_fn(uintptr_t yld_register_tool);
@@ -116,6 +117,10 @@ void *np_compat_manager(void);
 // The first tool in the app's list the manager holds, or NULL.
 // Manager-owned. Callers read fields without taking ownership.
 void *np_compat_registered_tool(void *compat_mgr);
+
+// Canonical allowlisted name, only when our registry and this live manager both
+// contain it. Never returns the caller's untrusted IPC string.
+const char *np_compat_registered_name(void *compat_mgr, const char *requested);
 
 // Name of the first tool in the app's list, which unmapped Windows games run under.
 const char *np_compat_fallback_tool_name(void);

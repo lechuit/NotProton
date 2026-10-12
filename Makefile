@@ -66,7 +66,7 @@ DEPS := $(OBJS:.o=.d)
         anchorcheck callscheck sigdb-fixtures webpatch-fixtures peicon-fixtures panel-behavior app-tests \
         tests-list overlay-shim overlay-shim-install overlay-shim-tests \
         overlay-shim-bench iconmaker icon \
-        appinfo helpers-install ntdll-resolve bridge runcheck compatcheck \
+        appinfo helpers-install ntdll-resolve bridge runcheck compatcheck compat-hooks \
         compatsvc-check scriptcheck envcheck buildcheck settingscheck routecheck bridgecheck licensecheck gamedrivecheck launchercheck launch-shell FORCE
 
 APP_PAYLOAD := app/Sources/NotProtonApp/Resources/payload
@@ -171,6 +171,11 @@ compatcheck: $(RUN_SCRIPT_H) $(WINE_SCRIPT_H)
 	$(COMPATCHECK)
 
 COMPATSVC_CHECK := $(OUT_DIR)/compatsvc-check
+
+compat-hooks: $(RUN_SCRIPT_H) $(WINE_SCRIPT_H)
+	@mkdir -p $(OUT_DIR)
+	$(TEST_CC) -I$(GENERATED_DIR) -o $(OUT_DIR)/compat-hooks dylib/tests/compat-hooks.c
+	$(OUT_DIR)/compat-hooks
 
 compatsvc-check:
 	@if [ ! -f dylib/tests/compatsvc-check.c ]; then $(call SKIP,compatsvc-check,dylib/tests/compatsvc-check.c); exit 0; fi; \
@@ -346,6 +351,7 @@ panel-behavior:
 	node $(PANEL_TESTS)/shell.js $(OUT_DIR)/panel-emit && \
 	node $(PANEL_TESTS)/migration.js $(OUT_DIR)/panel-emit && \
 	node $(PANEL_TESTS)/localization.js $(OUT_DIR)/panel-emit && \
+	node $(PANEL_TESTS)/forcetool.js $(OUT_DIR)/panel-emit && \
 	echo "==> panel behavior: renders as expected, no stale arguments"
 
 CX_ROOT ?= /Applications/CrossOver Preview.app
