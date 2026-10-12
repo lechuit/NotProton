@@ -48,14 +48,24 @@ PE files. Repeat with the i386 LSC, `steamclient.dll`, and `--module steamclient
 
 Use an isolated fresh prefix and an ABI-checked bridge directory with architecture
 subdirectories. Keep the official Wine 11.17 `ntdll.so` and `ntdll.dll` unchanged.
-Set `WINEDLLPATH` to the staged bridge, `lsteamclient=b`, and the forwarding DLLs to
-`n`. Stage the native forwarders and **the x86_64 LSC PE trigger** into the fresh
+Set `WINEDLLPATH` to the **parent bridge directory**, `lsteamclient=b`, and the
+forwarding DLLs to `n`. Wine adds the `x86_64-windows`, `i386-windows`, and
+`x86_64-unix` suffixes itself. Do not add those subdirectories or the prefix's
+Steam directory to `WINEDLLPATH`: selecting a flat PE trigger as the builtin would
+associate it with a nonexistent adjacent Unix half and break Unix calls.
+Stage the native forwarders and **the x86_64 LSC PE trigger** into the fresh
 prefix's Steam directory; place the i386 LSC PE trigger in `windows/syswow64` for
 32-bit clients. Stock Wine resolves a real Windows-path DLL before choosing a
 builtin implementation, so merely adding a DLL to `WINEDLLPATH` is insufficient.
 `lsteamclient=b` redirects those architecture-correct trigger files to the staged
 LSC builtin and its Unix half. Set `STEAM_COMPAT_CLIENT_INSTALL_PATH` to the
 installed macOS Steam `Contents/MacOS` directory containing `steamclient.dylib`.
+
+Steam for Mac must already be running and signed in. Having `steamclient.dylib`
+present on disk is insufficient: LSC can load the library and return SteamClient023
+while `CreateSteamPipe` still returns zero because the native client is closed.
+The probe reports this as `native_steam_pipe_unavailable`, separately from DLL
+resolution or ABI failures.
 
 The probe loads the forwarded DLL and verifies the actual Wine version, LSC module,
 SteamClient023 interface, a native Steam user, login state, and whether the Aion 2
