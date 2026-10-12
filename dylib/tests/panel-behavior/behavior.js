@@ -19,6 +19,13 @@ for (const form of Object.keys(FORMS)) {
   t.ok(P({ details: details('', { unAppID: 3420702832, vecPlatforms: ['osx'],
                                   strCompatToolName: '' }) }) !== null,
        'a shortcut renders the panel before a tool name reaches the page');
+  const experimental = walk(P({ details: details('CX_GRAPHICS_BACKEND=d3dmetal WINEMSYNC=1 %command%',
+    { strCompatToolName: 'notproton-wine-wine-11.17' }) }));
+  t.ok(experimental.every(x => x.type !== 'Toggle' && x.type !== 'Dropdown'),
+       'independent Wine hides unsupported CrossOver graphics and synchronization controls');
+  t.ok(experimental.some(x => typeof x.props.children === 'string'
+    && x.props.children.includes('Experimental Wine engine') && x.props.children.includes('Windows Steam')),
+       'independent Wine explains its SteamAPI limitation');
 
   let r = nodes('');
   t.ok(toggles(r).length === 6 && sections(r).length === 3, 'automatic shows six toggles in three sections');

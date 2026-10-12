@@ -220,6 +220,10 @@ static int out_expand(np_out_t *o, const char *replace, const np_cap_t *caps) {
     "{data:\"wined3d\",label:\"WineD3D\"}];" \
     "if(t.unAppID<2147483648&&(t.vecPlatforms||[]).indexOf(\"osx\")>=0" \
     "&&!t.strCompatToolName)return null;" \
+    "if((t.strCompatToolName||\"\").startsWith(\"notproton-wine-\"))" \
+    "return(0," RT ".jsx)(\"div\",{className:\"MSCXPanel\",children:npL(" \
+    "\"Experimental Wine engine. Configure graphics in its runtime. Games requiring SteamAPI need Windows Steam in this prefix.\"," \
+    "\"实验性 Wine 引擎。请在运行环境中配置图形。需要 SteamAPI 的游戏必须在此配置中运行 Windows Steam。\")});" \
     "return(0," RT ".jsx)(\"div\",{className:\"MSCXPanel\",children:(0," RT ".jsxs)(" RT ".Fragment,{children:[" \
     "(0," RT ".jsx)(\"style\",{children:" NP_CX_OPTIONS_CSS "})," \
     "(0," RT ".jsxs)(" BARREL ".XY,{label:npL(\"Graphics\",\"图形\"),children:[" \

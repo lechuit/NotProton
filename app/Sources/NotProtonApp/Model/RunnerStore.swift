@@ -153,6 +153,7 @@ enum CompatToolList {
         compatTools: URL = SupportPaths.Steam.compatTools,
         fexAvailable: Bool = CompatTool.Flavor.fexAvailable
     ) throws -> Bool {
+        // Independent Wine registrations live in wine-tools; syncing CrossOver never rewrites them.
         let (builds, listed, tools) = resolved(runners: runners, file: file, fexAvailable: fexAvailable)
         let text = contents(tools)
         let changed = !(listed == text || (listed == nil && text.isEmpty))

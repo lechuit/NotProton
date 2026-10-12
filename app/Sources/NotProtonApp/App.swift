@@ -1,6 +1,7 @@
 // Self-explanatory
 
 import SwiftUI
+import UniformTypeIdentifiers
 
 struct NotProtonApp: App {
 
@@ -71,6 +72,9 @@ struct NotProtonApp: App {
             Button("Fetch Valve Binaries") { Task { await status.fetchValveBinaries() } }
                 .disabled(!status.canInstall)
 
+            Button("Import Experimental Wine Engine…") { importWineEngine() }
+                .disabled(!status.isIdle)
+
             Divider()
 
             updateBlockCommand
@@ -86,6 +90,26 @@ struct NotProtonApp: App {
         }
 
         prefixMenu
+    }
+
+    private func importWineEngine() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = [.json]
+        panel.allowsMultipleSelection = false
+        panel.canChooseDirectories = false
+        panel.message = "Choose a Wine engine descriptor exported by Whisky Lab."
+        guard panel.runModal() == .OK, let file = panel.url else { return }
+        let alert = NSAlert()
+        do {
+            let imported = try IndependentWine.register(descriptorAt: file)
+            alert.messageText = "\(imported.display) is registered"
+            alert.informativeText = "Restart Steam, then choose this engine in the game's Compatibility settings.\n\n\(IndependentWine.limitations)"
+        } catch {
+            alert.messageText = "Wine engine could not be imported"
+            alert.informativeText = error.localizedDescription
+            alert.alertStyle = .warning
+        }
+        alert.runModal()
     }
 
     @CommandsBuilder

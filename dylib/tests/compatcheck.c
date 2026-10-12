@@ -283,6 +283,45 @@ static void tool_list_cases(void) {
           && !g_tool_list_present, "a missing list keeps no tools and says so");
 }
 
+static void independent_tool_cases(void) {
+    const char *list = "out/compatcheck-wine-tools";
+    FILE *f = fopen(list, "w");
+    if (!f) { check(0, "the independent registry fixture can be written"); return; }
+    fputs("notproton-wine-test\twine-test\trosetta\tWine Test (Experimental)\n"
+          "notproton-wine-wrong\twine-other\trosetta\tMismatched identity\n"
+          "notproton-26.3\t26.3.0.39832\trosetta\tWrong provider\n", f);
+    fclose(f);
+    g_tool_count = 0;
+    g_tool_list_present = 0;
+    check(append_tool_list(list, "out", 1) == 1 && g_tool_list_present,
+          "the independent registry only loads matched independent identities");
+    check(independent_tool(&g_tools[0]), "the independent tool has a distinct provider");
+    check(strcmp(np_compat_fallback_tool_name(), "notproton") == 0,
+          "an experimental engine is never selected as the automatic fallback");
+    uint8_t *mgr = build_manager(1, -1);
+    *(const char **)(entries + COMPAT_TOOL_NAME_OFF) = g_tools[0].name;
+    check(np_compat_registered_tool(mgr) == NULL,
+          "an experimental engine needs an explicit per-game selection");
+    check(write_tool(&g_tools[0]) == 0, "the independent tool manifests can be generated");
+    char path[768];
+    snprintf(path, sizeof(path), "%s/run", g_tools[0].dir);
+    f = fopen(path, "r");
+    char text[512] = {0};
+    if (f) { fread(text, 1, sizeof(text) - 1, f); fclose(f); }
+    check(strstr(text, "independent Wine compatibility tool shim") != NULL,
+          "Steam regeneration installs the independent script rather than CrossOver's");
+    check(write_tool(&g_tools[0]) == 0, "Steam can regenerate an independent tool twice");
+    f = fopen(path, "r");
+    memset(text, 0, sizeof(text));
+    if (f) { fread(text, 1, sizeof(text) - 1, f); fclose(f); }
+    check(strstr(text, "independent Wine compatibility tool shim") != NULL,
+          "repeated startup retains the independent launch path");
+    remove_tool("out", "notproton-wine-test");
+    unlink(list);
+    g_tool_count = 0;
+    g_tool_list_present = 0;
+}
+
 static void tool_launch_cases(void) {
     static const char *tool[] = {
         "'/tools/compatibilitytools.d/notproton/.'/run waitforexitandrun  '/g/game.exe'",
@@ -443,6 +482,7 @@ int main(void) {
     enabled_cases();
     manager_cases();
     tool_list_cases();
+    independent_tool_cases();
     tool_launch_cases();
     stale_tool_cases();
     installed_fn_cases();

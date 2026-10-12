@@ -52,6 +52,7 @@ TEST_CC     := $(CC) -arch $(ARCH) -mmacosx-version-min=$(MIN_VER) -std=c17 -g \
 
 GENERATED_DIR := $(OUT_DIR)/generated
 RUN_SCRIPT_H  := $(GENERATED_DIR)/compat_run.h
+WINE_SCRIPT_H := $(GENERATED_DIR)/compat_wine_run.h
 CFLAGS += -I$(GENERATED_DIR)
 
 ARM64_DYLIB := $(OUT_DIR)/notproton.arm64.dylib
@@ -92,6 +93,12 @@ runcheck:
 		$(call SKIP,runcheck,shellcheck); exit 0; fi; \
 	shellcheck dylib/feats/compat_run.sh && sh -n dylib/feats/compat_run.sh && \
 	echo "==> runcheck: the run script lints and parses clean"
+
+.PHONY: winecheck
+winecheck:
+	sh -n dylib/feats/compat_wine_run.sh
+	python3 dylib/tests/winecheck.py dylib/feats/compat_wine_run.sh
+	@if command -v shellcheck >/dev/null 2>&1; then shellcheck dylib/feats/compat_wine_run.sh; fi
 
 .PHONY: seedcheck
 seedcheck:
@@ -156,7 +163,7 @@ scriptcheck:
 
 COMPATCHECK := $(OUT_DIR)/compatcheck
 
-compatcheck: $(RUN_SCRIPT_H)
+compatcheck: $(RUN_SCRIPT_H) $(WINE_SCRIPT_H)
 	@if [ ! -f dylib/tests/compatcheck.c ]; then $(call SKIP,compatcheck,dylib/tests/compatcheck.c); exit 0; fi; \
 	mkdir -p $(OUT_DIR) && \
 	$(TEST_CC) -I$(GENERATED_DIR) \
@@ -375,7 +382,11 @@ $(RUN_SCRIPT_H): dylib/feats/compat_run.sh dylib/embed_script.py
 	@mkdir -p $(GENERATED_DIR)
 	python3 dylib/embed_script.py $< $@ RUN_SCRIPT
 
-$(OUT_DIR)/dylib/feats/compat.o: $(RUN_SCRIPT_H)
+$(WINE_SCRIPT_H): dylib/feats/compat_wine_run.sh dylib/embed_script.py
+	@mkdir -p $(GENERATED_DIR)
+	python3 dylib/embed_script.py $< $@ WINE_RUN_SCRIPT
+
+$(OUT_DIR)/dylib/feats/compat.o: $(RUN_SCRIPT_H) $(WINE_SCRIPT_H)
 
 SUPPORT_DIR        := $(HOME)/Library/Application Support/notproton
 OVERLAY_SHIM_SRC   := overlay-shim/overlay_shim.m
@@ -547,6 +558,7 @@ app-payload: $(TARGET) $(OVERLAY_SHIM) $(ICONMAKER) $(APPINFO)
 	cp -f $(ICONMAKER) "$(APP_PAYLOAD)/iconmaker"
 	cp -f $(APPINFO) "$(APP_PAYLOAD)/appinfo"
 	cp -f dylib/feats/compat_run.sh "$(APP_PAYLOAD)/run"
+	cp -f dylib/feats/compat_wine_run.sh "$(APP_PAYLOAD)/run-wine"
 	cp -f signatures/macos.arm64/*.json "$(APP_PAYLOAD)/signatures/macos.arm64/"
 	@set -e; for spec in $(BRIDGE_FILES); do \
 		src="$${spec%%:*}"; dst="$(APP_PAYLOAD)/bridge/$${spec##*:}"; \

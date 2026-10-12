@@ -54,6 +54,7 @@ static const char TOOL_DECLARATION_FMT[] =
     "}\n";
 
 #include "compat_run.h"  // RUN_SCRIPT, generated from compat_run.sh
+#include "compat_wine_run.h"
 
 static int write_file(const char *path, const char *content, int executable) {
     FILE *f = fopen(path, "w");
@@ -354,14 +355,17 @@ static int parse_tool_line(char *line, tool_entry_t *out) {
     return 1;
 }
 
-int np_compat_load_tool_list(const char *path, const char *tools_dir) {
-    g_tool_count = 0;
-    g_tool_list_present = 0;
+static int independent_tool(const tool_entry_t *tool) {
+    return strncmp(tool->name, "notproton-wine-", 15) == 0;
+}
+
+static int append_tool_list(const char *path, const char *tools_dir, int independent) {
 
     FILE *f = fopen(path, "r");
     if (!f) {
-        NP_WARN("np_compat_load_tool_list: %s is missing, so no build has a tool "
-                "until NotProton sets one up", path);
+        if (!independent)
+            NP_WARN("np_compat_load_tool_list: %s is missing, so no build has a tool "
+                    "until NotProton sets one up", path);
         return 0;
     }
     g_tool_list_present = 1;
@@ -377,6 +381,13 @@ int np_compat_load_tool_list(const char *path, const char *tools_dir) {
         if (!parse_tool_line(line, &entry)) {
             NP_WARN("np_compat_load_tool_list: %s line %d is not a tool, skipped",
                     path, lineno);
+            continue;
+        }
+        if (independent_tool(&entry) != independent
+            || (independent && (strcmp(entry.flavor, "rosetta") != 0
+                || strncmp(entry.build, "wine-", 5) != 0
+                || strcmp(entry.name + 15, entry.build + 5) != 0))) {
+            NP_WARN("np_compat_load_tool_list: %s has an incorrect engine provider, skipped", entry.name);
             continue;
         }
 
@@ -407,6 +418,12 @@ int np_compat_load_tool_list(const char *path, const char *tools_dir) {
     return g_tool_count;
 }
 
+int np_compat_load_tool_list(const char *path, const char *tools_dir) {
+    g_tool_count = 0;
+    g_tool_list_present = 0;
+    return append_tool_list(path, tools_dir, 0);
+}
+
 static int tools_dir_path(char *out, size_t size) {
     const char *home = np_home_dir();
     if (!home) return -1;
@@ -422,6 +439,8 @@ static void load_tool_list(void) {
     char path[512];
     snprintf(path, sizeof(path), "%s/Library/Application Support/notproton/tools", home);
     np_compat_load_tool_list(path, tools_dir);
+    snprintf(path, sizeof(path), "%s/Library/Application Support/notproton/wine-tools", home);
+    append_tool_list(path, tools_dir, 1);
 }
 
 static void load_tool_list_once(void) {
@@ -462,7 +481,8 @@ static int write_tool(const tool_entry_t *tool) {
     // The run script is the shim this project owns and updates, so rewrite it
     // every launch rather than leaving a stale copy behind.
     snprintf(path, sizeof(path), "%s/run", tool->dir);
-    if (write_file(path, RUN_SCRIPT, 1) == 0) wrote++;
+    const char *script = independent_tool(tool) ? WINE_RUN_SCRIPT : RUN_SCRIPT;
+    if (write_file(path, script, 1) == 0) wrote++;
     else NP_WARN("np_compat_ensure_tool_manifest: failed to write %s", path);
 
     char line[80];
@@ -572,9 +592,11 @@ const char *np_compat_tool_dir(void) {
     resolved = 1;
     load_tool_list_once();
 
-    if (g_tool_count > 0) {
-        snprintf(dir, sizeof(dir), "%s", g_tools[0].dir);
-        return dir;
+    for (int i = 0; i < g_tool_count; i++) {
+        if (!independent_tool(&g_tools[i])) {
+            snprintf(dir, sizeof(dir), "%s", g_tools[i].dir);
+            return dir;
+        }
     }
 
     char tools_dir[512];
@@ -816,7 +838,9 @@ void np_compat_register_crossover(void *compat_mgr) {
 
 const char *np_compat_fallback_tool_name(void) {
     load_tool_list_once();
-    return g_tool_count > 0 ? g_tools[0].name : TOOL_DIR_NAME;
+    for (int i = 0; i < g_tool_count; i++)
+        if (!independent_tool(&g_tools[i])) return g_tools[i].name;
+    return TOOL_DIR_NAME;
 }
 
 void *np_compat_registered_tool(void *compat_mgr) {
@@ -828,6 +852,8 @@ void *np_compat_registered_tool(void *compat_mgr) {
         return find_tool(compat_mgr, TOOL_DIR_NAME);
 
     for (int i = 0; i < g_tool_count; i++) {
+        // Independent engines are experimental and require explicit selection.
+        if (independent_tool(&g_tools[i])) continue;
         void *entry = find_tool(compat_mgr, g_tools[i].name);
         if (entry)
             return entry;

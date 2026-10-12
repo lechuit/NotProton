@@ -1,5 +1,60 @@
 # NotProton
 
+## Experimental independent Wine support in this fork
+
+This fork can register an independent Wine runtime exported by Whisky Lab. In
+NotProton choose **Setup > Import Experimental Wine Engine**, or run:
+
+```sh
+"/Applications/NotProton Trial.app/Contents/MacOS/NotProtonApp" --import-wine-engine "/absolute/path/runtime-descriptor.json"
+```
+
+Restart Steam and select the engine marked **Experimental** in a game's
+Compatibility settings. The descriptor schema is:
+
+```json
+{
+  "schemaVersion": 1,
+  "id": "wine-11.17",
+  "displayName": "Wine 11.17",
+  "backend": "wine",
+  "root": "/absolute/canonical/path/to/wine",
+  "wineLoader": "bin/wine",
+  "wineServer": "bin/wineserver",
+  "steamAPI": "unavailable"
+}
+```
+
+`bin/wine64` is also accepted. Both executable paths must stay within the same
+runtime root, including when they are symlinks. Registration pins their SHA256
+hashes; import again after updating Wine. CrossOver cannot be imported under this
+provider, and all existing CrossOver licensing and trial checks remain active.
+
+**This is a raw Wine launcher, not a port of the native SteamAPI bridge.** Games
+that need SteamAPI require the real Windows Steam client running in this Wine
+prefix. No native Steam Input, overlay, automatic graphics installation, or Steam
+Cloud support is claimed. Aion 2 compatibility is unverified. Neither Whisky's UI
+nor this registration makes an unsupported anti-cheat work.
+The raw wrapper tracks the launched Wine process, rather than waiting for every
+process in the prefix; Windows Steam can therefore remain open after a game exits.
+Launchers that exit before handing off to a child game are not yet tracked.
+
+Each engine's prefix lives at
+`<STEAM_COMPAT_DATA_PATH>/notproton-wine/<engine-id>/pfx`; logs are alongside it as
+`notproton-wine.log`. The launcher never deploys CrossOver's ntdll patches or
+copies its graphics libraries. It refuses an existing `pfx` or `notproton-build`
+record before changing that game's directory. Back up the existing compatibility
+data directory and choose a fresh directory for these experiments. Launch
+arguments are omitted from the wrapper log because they can contain login tokens;
+output produced by Wine or the Windows program itself can still be sensitive.
+
+The independent registry is stored in `notproton/wine-tools`, separate from
+CrossOver's registry, so CrossOver setup and Steam startup preserve it. Run
+`make winecheck compatcheck` and
+`swift test --package-path app --no-parallel --filter IndependentWineTests` for
+isolated checks. A functioning Wine runtime and Windows Steam/game smoke tests
+are still required to establish actual game support.
+
 ## CrossOver 14-day trial support in this fork
 
 The `crossover-14-day-trial` branch accepts the official CrossOver trial for
