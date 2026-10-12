@@ -20,7 +20,7 @@ jobs=2
 
 usage() {
     cat <<'EOF'
-Build the LSC bridge and Steam shim against pinned stock Wine Devel 11.17 or 11.18.
+Build the LSC bridge and Steam shim against pinned stock Wine Devel 11.17, 11.18 or 11.19.
 
 Required:
   --toolchain DIR     Existing LLVM MinGW root, containing bin/
@@ -30,7 +30,7 @@ Required:
 
 Optional:
   --source DIR        Reuse a source checkout at the exact pinned Wine commit
-  --wine-version VER  Exact supported Devel version: 11.17 (default) or 11.18
+  --wine-version VER  Exact supported Devel version: 11.17 (default), 11.18 or 11.19
   --build DIR         Reuse a matching x86_64 Wine configured build tree
   --output DIR        Stage LSC/shim here (default: WORK/bridge)
   --jobs N            PE make parallelism, 1-16 (default: 2)
@@ -67,7 +67,8 @@ done
 case "$wine_version" in
     11.17) wine_commit=36b6a2cf679fb395f668a917b76537190e212d9c ;;
     11.18) wine_commit=7b3fff76fa5178f6ce0141b2c776afa2a822f101 ;;
-    *) fail "Unsupported --wine-version: use Devel 11.17 or 11.18 (not Staging)." ;;
+    11.19) wine_commit=455e3509b98a6919fd4ad1def4803e08c41c03b2 ;;
+    *) fail "Unsupported --wine-version: use Devel 11.17, 11.18 or 11.19 (not Staging)." ;;
 esac
 wine_tag="wine-$wine_version"
 [ -n "$toolchain" ] && [ -n "$bison" ] && [ -n "$runtime" ] && [ -n "$work" ] || {

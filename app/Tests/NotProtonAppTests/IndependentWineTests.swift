@@ -209,6 +209,61 @@ struct IndependentWineTests {
         #expect(try Data(contentsOf: olderRecordFile) == olderRecord)
     }
 
+    @Test("Wine 11.19 preserves both older registrations and requires its own unchanged runtime image")
+    func nativeVersion19Registration() throws {
+        let scratch = try scratchDirectory("native-version-19")
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let pins = [("11.17", "36b6a2cf679fb395f668a917b76537190e212d9c"),
+                    ("11.18", "7b3fff76fa5178f6ce0141b2c776afa2a822f101"),
+                    ("11.19", "455e3509b98a6919fd4ad1def4803e08c41c03b2")]
+        let descriptorFile = scratch.appending(path: "engine.json")
+        let script = scratch.appending(path: "run-wine")
+        try Data("#!/bin/sh\n".utf8).write(to: script)
+        let support = scratch.appending(path: "support")
+        let tools = scratch.appending(path: "tools")
+        var preserved: [URL: Data] = [:]
+        var registryLines: [String] = []
+        for (version, commit) in pins {
+            let versionScratch = scratch.appending(path: version)
+            let root = try fixture(versionScratch)
+            let bridge = try nativeFixture(versionScratch, runtime: root, version: version, commit: commit)
+            let descriptor = nativeDescriptor(root: root, bridge: bridge, version: version)
+            try JSONEncoder().encode(descriptor).write(to: descriptorFile)
+            let native = try IndependentWine.register(descriptorAt: descriptorFile, support: support,
+                                                      compatTools: tools, runScript: script)
+            #expect(native.name == "notproton-wine-native-wine-\(version)")
+            #expect(native.runtimeRecord.hasPrefix("2\nnative-wine-\(version)\n"))
+            #expect(native.bridge?.manifest.wineVersion == version)
+            #expect(native.bridge?.manifest.wineCommit == commit)
+            let runner = support.appending(path: "runners/wine-native-wine-\(version)")
+            let managed = runner.appending(path: "bridge-\(native.bridge!.identity)")
+            let runtimeNtdll = root.appending(path: NativeWineBridge.runtimeNtdll)
+            let linkedNtdll = managed.appending(path: "x86_64-unix/ntdll.so")
+            let linkTarget = try FileManager.default.destinationOfSymbolicLink(atPath: linkedNtdll.path(percentEncoded: false))
+            #expect(linkTarget == native.bridge!.runtimeNtdllSource.path(percentEncoded: false))
+            #expect(try Data(contentsOf: linkedNtdll) == Data(contentsOf: runtimeNtdll))
+            for (file, bytes) in preserved {
+                #expect(try Data(contentsOf: file) == bytes)
+            }
+            registryLines.append(native.registryLine)
+            let registry = try String(contentsOf: support.appending(path: "wine-tools"), encoding: .utf8)
+            #expect(registryLines.allSatisfy { registry.contains($0) })
+            if version == "11.19" {
+                try Data("changed 11.19 runtime image".utf8).write(to: runtimeNtdll)
+                #expect(throws: (any Error).self) { try IndependentWine.validate(descriptor) }
+                for (file, bytes) in preserved {
+                    #expect(try Data(contentsOf: file) == bytes)
+                }
+            } else {
+                let record = runner.appending(path: "runtime.v1")
+                preserved[record] = try Data(contentsOf: record)
+                preserved[runtimeNtdll] = try Data(contentsOf: runtimeNtdll)
+                let toolDeclaration = tools.appending(path: "\(native.name)/compatibilitytool.vdf")
+                preserved[toolDeclaration] = try Data(contentsOf: toolDeclaration)
+            }
+        }
+    }
+
     @Test("Native imports reject mixed source versions, Staging and unapproved versions before registration")
     func nativeVersionSourcePairs() throws {
         let scratch = try scratchDirectory("native-version-source")
@@ -219,8 +274,12 @@ struct IndependentWineTests {
         let manifest = try JSONDecoder().decode(NativeWineBridgeManifest.self, from: Data(contentsOf: manifestFile))
         let wine17 = "36b6a2cf679fb395f668a917b76537190e212d9c"
         let wine18 = "7b3fff76fa5178f6ce0141b2c776afa2a822f101"
+        let wine19 = "455e3509b98a6919fd4ad1def4803e08c41c03b2"
         let invalidPairs = [("11.17", wine18), ("11.18", wine17), ("11.18", "unknown"),
-                            ("11.18 (Staging)", wine18), ("wine-11.18", wine18), ("11.19", wine18)]
+                            ("11.18 (Staging)", wine18), ("wine-11.18", wine18), ("11.19", wine18),
+                            ("11.19", wine17), ("11.17", wine19), ("11.18", wine19),
+                            ("11.19", "unknown"), ("11.19 (Staging)", wine19), ("wine-11.19", wine19),
+                            ("11.20", wine19)]
         let descriptorFile = scratch.appending(path: "engine.json")
         try JSONEncoder().encode(nativeDescriptor(root: root, bridge: bridge)).write(to: descriptorFile)
         let support = scratch.appending(path: "support")

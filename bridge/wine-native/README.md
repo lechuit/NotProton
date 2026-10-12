@@ -15,14 +15,14 @@ game expects them to reside inside its `steamclient` module.
 ## Build
 
 First rebuild both LSC PE halves and the x86_64 Unix half against the pinned Wine
-Devel 11.17 or 11.18 headers and that runtime's unchanged ntdll. See
+Devel 11.17, 11.18 or 11.19 headers and that runtime's unchanged ntdll. See
 [the component build guide](BUILD-LSTEAMCLIENT.md) for the exact source pins.
 Do not substitute an old CrossOver `ntdll` or transplant its patch.
 Then pass those PE files and the workspace-local LLVM MinGW toolchain explicitly:
 
 ```sh
 sh bridge/wine-native/build.sh \
-  --wine-version 11.18 \
+  --wine-version 11.19 \
   --toolchain /absolute/path/to/llvm-mingw \
   --lsteamclient-x64 /absolute/path/to/x86_64-windows/lsteamclient.dll \
   --lsteamclient-x86 /absolute/path/to/i386-windows/lsteamclient.dll \
@@ -33,7 +33,7 @@ sh bridge/wine-native/build.sh \
 The i386 option is optional while validating the 64-bit path. All output stays in
 the specified build directory. Building does not install libraries, touch Steam,
 start a game, change accounts, or rewrite a user's prefix.
-The version option accepts only `11.17` (default) or `11.18` and compiles that exact
+The version option accepts only `11.17` (default), `11.18` or `11.19` and compiles that exact
 expected version into both probes. Use the same choice as the LSC build; changing
 this option does not make an older LSC binary compatible with a newer runtime.
 
@@ -85,7 +85,7 @@ source commit, runtime version and ntdll hash, component provenance and all PE
 forwarders. In a new prefix, finish `cmd.exe /c ver` and run both architectures
 through the final `steam.exe` launcher path; require both probes to return zero
 with the intended native session available. Use a new engine id such as
-`wine-11.18` so the existing 11.17 runtime and prefixes remain available.
+`wine-11.19` so the existing 11.17 and 11.18 runtimes and prefixes remain available.
 
 Success demonstrates the bridge can contact the current macOS Steam session.
 It does not establish that Aion 2 starts, its graphics backend works, every Steam

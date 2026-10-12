@@ -14,6 +14,7 @@ enum NativeWineBridge {
     static let sourceCommitsByVersion = [
         "11.17": "36b6a2cf679fb395f668a917b76537190e212d9c",
         "11.18": "7b3fff76fa5178f6ce0141b2c776afa2a822f101",
+        "11.19": "455e3509b98a6919fd4ad1def4803e08c41c03b2",
     ]
     static let runtimeNtdll = "lib/wine/x86_64-unix/ntdll.so"
     static let files = [
@@ -49,7 +50,7 @@ enum NativeWineBridge {
               sourceCommitsByVersion[manifest.wineVersion] == manifest.wineCommit,
               Set(manifest.files.keys) == Set(files), validHash(manifest.runtimeNtdllSHA256),
               manifest.files.values.allSatisfy(validHash) else {
-            try refuse("Native bridge manifest must use a supported Wine Devel 11.17 or 11.18 source commit and the fixed file set.")
+            try refuse("Native bridge manifest must use a supported Wine Devel 11.17, 11.18 or 11.19 source commit and the fixed file set.")
         }
         for relative in files {
             let file = root.appending(path: relative)

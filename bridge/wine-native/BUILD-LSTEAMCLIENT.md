@@ -11,6 +11,7 @@ The supported Wine Devel version/source pairs are fixed:
 | --- | --- | --- |
 | `11.17` (default) | `wine-11.17` | `36b6a2cf679fb395f668a917b76537190e212d9c` |
 | `11.18` | `wine-11.18` | `7b3fff76fa5178f6ce0141b2c776afa2a822f101` |
+| `11.19` | `wine-11.19` | `455e3509b98a6919fd4ad1def4803e08c41c03b2` |
 
 Other versions and Staging are refused. The existing LSC fetcher verifies Valve's
 Proton source tree against its recorded content digest; shim headers retain their
@@ -26,19 +27,19 @@ installs no package-manager dependencies. The source/build paths must have no
 whitespace because Wine's generated make rules do not safely represent it.
 Runtime and output paths may contain spaces.
 
-The supplied runtime must report exactly `wine-11.17` or `wine-11.18`, matching the
+The supplied runtime must report exactly `wine-11.17`, `wine-11.18` or `wine-11.19`, matching the
 selected version, and contain its stock x86_64
 `lib/wine/x86_64-unix/ntdll.so`. The helper copies that file into its build tree
 only as the Unix bridge link input. Its hash is recorded in the output provenance;
 deployment must require the same ntdll hash. This was tested with the independent
-Gcenx Wine Devel 11.17 macOS runtime. Version 11.18 requires its own matched build
+Gcenx Wine Devel 11.17 macOS runtime. Each newer version requires its own matched build
 and probe checks; a version option is not evidence of working Steam interop.
 
 ## Build
 
 ```sh
 sh bridge/wine-native/build-lsteamclient.sh \
-  --wine-version 11.18 \
+  --wine-version 11.19 \
   --toolchain /absolute/path/to/llvm-mingw \
   --bison /absolute/path/to/bison \
   --runtime-root '/absolute/path/to/Wine Devel.app/Contents/Resources/wine' \
@@ -47,9 +48,8 @@ sh bridge/wine-native/build-lsteamclient.sh \
   --jobs 2
 ```
 
-Use a separate 11.18 workspace and runtime rather than updating an existing 11.17
-tree. Omitting `--wine-version` preserves the 11.17 default. The helper refuses a
-Staging runtime even if the requested version is `11.18`.
+Use a separate workspace and runtime for each version. Omitting `--wine-version`
+preserves the 11.17 default. The helper refuses Staging for every supported version.
 
 The workspace contains `source/`, `build/`, `proton-lsc/`, `lsteamclient/`, and
 `proton-headers-cache/`. To reuse previously configured, matching trees, pass

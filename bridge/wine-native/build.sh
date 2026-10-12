@@ -24,11 +24,11 @@ while [ "$#" -gt 0 ]; do
     shift 2
 done
 case "$wine_version" in
-    11.17|11.18) ;;
-    *) echo "Unsupported --wine-version: use Devel 11.17 or 11.18 (not Staging)." >&2; exit 1 ;;
+    11.17|11.18|11.19) ;;
+    *) echo "Unsupported --wine-version: use Devel 11.17, 11.18 or 11.19 (not Staging)." >&2; exit 1 ;;
 esac
 [ -n "$toolchain" ] && [ -n "$lsc_x64" ] && [ -n "$sdk" ] && [ -n "$out" ] || {
-    echo "Required: --toolchain <llvm-mingw-root> --lsteamclient-x64 <dll> --sdk-root <Steamworks165> --output <dir>; optional --wine-version 11.17|11.18 (default: 11.17)" >&2
+    echo "Required: --toolchain <llvm-mingw-root> --lsteamclient-x64 <dll> --sdk-root <Steamworks165> --output <dir>; optional --wine-version 11.17|11.18|11.19 (default: 11.17)" >&2
     exit 1
 }
 [ -f "$sdk/steam_api.h" ] || { echo "Steamworks SDK headers missing" >&2; exit 1; }

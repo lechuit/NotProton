@@ -11,7 +11,8 @@ from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 COMMITS = {"11.17": "36b6a2cf679fb395f668a917b76537190e212d9c",
-           "11.18": "7b3fff76fa5178f6ce0141b2c776afa2a822f101"}
+           "11.18": "7b3fff76fa5178f6ce0141b2c776afa2a822f101",
+           "11.19": "455e3509b98a6919fd4ad1def4803e08c41c03b2"}
 
 
 class VersionPreflightTests(unittest.TestCase):
@@ -76,12 +77,21 @@ class VersionPreflightTests(unittest.TestCase):
         self.assertFalse(self.work.exists())
 
     def test_runtime_staging_is_rejected(self):
-        self.env["TEST_RUNTIME_VERSION"] = "wine-11.18 (Staging)"
-        self.assertIn("expected wine-11.18", self.invoke("11.18"))
-        self.assertFalse(self.work.exists())
+        for version in COMMITS:
+            with self.subTest(version=version):
+                self.env["TEST_RUNTIME_VERSION"] = f"wine-{version} (Staging)"
+                self.assertIn(f"expected wine-{version}", self.invoke(version))
+                self.assertFalse(self.work.exists())
+
+    def test_11_19_rejects_other_runtime_versions(self):
+        for actual in ("11.17", "11.18", "11.20"):
+            with self.subTest(actual=actual):
+                self.env["TEST_RUNTIME_VERSION"] = f"wine-{actual}"
+                self.assertIn("expected wine-11.19", self.invoke("11.19"))
+                self.assertFalse(self.work.exists())
 
     def test_unknown_versions_are_rejected_by_both_helpers(self):
-        for version in ("11.19", "11.18 (Staging)", "wine-11.18"):
+        for version in ("11.20", "11.18 (Staging)", "11.19 (Staging)", "wine-11.19"):
             with self.subTest(version=version):
                 self.assertIn("Unsupported --wine-version", self.invoke(version))
                 result = subprocess.run(["sh", str(HERE / "build.sh"), "--wine-version", version,
@@ -93,23 +103,25 @@ class VersionPreflightTests(unittest.TestCase):
 
     def test_matching_runtime_cannot_use_other_source_commit(self):
         self.source()
-        for version, other in (("11.17", "11.18"), ("11.18", "11.17")):
+        for version, other in ((version, other) for version in COMMITS for other in COMMITS if version != other):
             with self.subTest(version=version):
                 self.env["TEST_RUNTIME_VERSION"] = f"wine-{version}"
                 self.env["TEST_SOURCE_COMMIT"] = COMMITS[other]
                 self.assertIn(f"not pinned commit {COMMITS[version]}", self.invoke(version))
                 self.assertFalse((self.work / "build").exists())
 
-    def test_matching_11_18_source_cannot_reuse_11_17_build(self):
+    def test_matching_source_cannot_reuse_another_version_build(self):
         source = self.source()
-        self.env.update(TEST_RUNTIME_VERSION="wine-11.18", TEST_SOURCE_COMMIT=COMMITS["11.18"])
         build = self.work / "build"
         (build / "include").mkdir(parents=True)
         (build / "Makefile").write_text(f"srcdir = {source}\n")
         (build / "config.status").write_text("host_cpu = x86_64\n")
-        (build / "include/config.h").write_text('#define PACKAGE_VERSION "11.17"\n')
-        self.assertIn("Existing build is not Wine 11.18", self.invoke("11.18"))
-        self.assertFalse((source / "dlls/lsteamclient").exists())
+        for version, other in ((version, other) for version in COMMITS for other in COMMITS if version != other):
+            with self.subTest(version=version, other=other):
+                self.env.update(TEST_RUNTIME_VERSION=f"wine-{version}", TEST_SOURCE_COMMIT=COMMITS[version])
+                (build / "include/config.h").write_text(f'#define PACKAGE_VERSION "{other}"\n')
+                self.assertIn(f"Existing build is not Wine {version}", self.invoke(version))
+                self.assertFalse((source / "dlls/lsteamclient").exists())
 
     def test_probe_compiler_receives_exact_version_for_both_architectures(self):
         # Replace build dependencies in this private fixture, never compile or run Wine.
@@ -130,14 +142,14 @@ class VersionPreflightTests(unittest.TestCase):
             path.write_text("#!/usr/bin/env python3\n" + compiler)
             path.chmod(0o755)
         self.executable(self.toolchain / "bin/lld-link", "exit 0")
-        for version in ("11.17", "11.18"):
+        for version in COMMITS:
             with self.subTest(version=version):
                 record.unlink(missing_ok=True)
                 args = ["sh", str(harness / "build.sh"), "--toolchain", str(self.toolchain),
                         "--lsteamclient-x64", str(self.root / "x64.dll"),
                         "--lsteamclient-x86", str(self.root / "x86.dll"),
                         "--sdk-root", str(sdk), "--output", str(self.root / f"probe {version}")]
-                if version == "11.18":
+                if version != "11.17":
                     args += ["--wine-version", version]
                 result = subprocess.run(args, env=dict(self.env, TEST_COMPILER_RECORD=str(record)),
                                         text=True, capture_output=True, timeout=10)
