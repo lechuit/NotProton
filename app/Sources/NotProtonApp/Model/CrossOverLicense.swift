@@ -28,8 +28,8 @@ enum CrossOverLicense {
     static let notActivatedAdvice = String(localized: "Please run CrossOver and try again.")
     static var notActivated: String { "\(notActivatedTitle) \(notActivatedAdvice)" }
 
-    static let trialEndedTitle = "Your CrossOver trial has ended."
-    static let trialEndedAdvice = "Buy CrossOver at https://www.codeweavers.com/store, then try again."
+    static let trialEndedTitle = String(localized: "Your CrossOver trial has ended.")
+    static let trialEndedAdvice = String(localized: "Buy CrossOver at https://www.codeweavers.com/store, then try again.")
     static var trialEnded: String { "\(trialEndedTitle) \(trialEndedAdvice)" }
 
     // CodeWeavers' published trial: 14 days from the first launch, which CrossOver

@@ -38,9 +38,13 @@ state() {
 	(
 		HOME=$home
 		np_system_prefs="$home/system"
-		np_now=$now
 		# shellcheck disable=SC2329 # called by the extracted license_state
 		defaults() { [ -n "$first_run" ] || return 1; printf '%s\n' "$first_run"; }
+		# Only the fixture replaces the clock; production always reads the system clock.
+		date() {
+			if [ "$#" = 1 ] && [ "$1" = +%s ]; then printf '%s\n' "$now";
+			else /bin/date "$@"; fi
+		}
 		for step in "$@"; do eval "$step"; done
 		eval "$functions"
 		license_state
@@ -55,6 +59,8 @@ license() {
 		-out "$1/com.codeweavers.CrossOver.${4:-sha256}" "$1/com.codeweavers.CrossOver.license"
 }
 
+is "a missing bundle key is refused during a trial" unlicensed \
+	"$(state "$(stamp $((now - day)))" 'CX_ROOT="$work/no-key"')"
 echo "== paid licenses =="
 is "a license signed by the bundle's key is accepted" licensed \
 	"$(state "" 'license "$HOME/Library/Preferences"')"

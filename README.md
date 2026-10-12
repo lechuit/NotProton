@@ -1,5 +1,36 @@
 # NotProton
 
+## CrossOver 14-day trial support in this fork
+
+The `crossover-14-day-trial` branch accepts the official CrossOver trial for
+14 days from the first launch recorded by CrossOver. Open CrossOver once to
+initialize the trial, then set up its compatibility tool in NotProton.
+
+NotProton checks eligibility both during setup and before each game launch.
+At exactly 14 days the trial is refused, with a message linking to the
+CodeWeavers store. Missing, unreadable, or future trial dates are refused.
+Signed paid licenses continue to work, even after the trial expires; an
+invalid license cannot fall back to a trial.
+
+This fork never changes CrossOver's trial date, license files, or the system
+clock. Trial support does not establish compatibility with any particular
+game or anti-cheat system. Already running games are not forcibly terminated
+at expiry; subsequent launches are refused.
+
+Trial date checks depend on CrossOver's locally recorded preferences and the
+system clock; they are not a tamper-resistant licensing system.
+
+The implementation adapts [upstream PR #85](https://github.com/NotProtonNot/NotProton/pull/85)
+by Geronimo Castaño, preserving its commit authorship, and adds a required
+bundle key at launch plus an isolated test clock rather than a production
+environment variable override.
+
+Validation: `make licensecheck` checks paid signatures, valid and expired
+trials, the exact expiry boundary, and missing/invalid/future trial dates.
+`swift test --package-path app --no-parallel --filter CrossOverLicenseTests`
+checks the application-side rule.
+
+
 NotProton enables the Steam Play experience from Linux Steam in the macOS Steam client.
 
 This is done by forcibly enabling the Steam Play functionality in macOS Steam (which is

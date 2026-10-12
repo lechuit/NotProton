@@ -156,6 +156,7 @@ np_system_prefs=/Library/Preferences
 # ended, or "trial <days left>".
 license_state() {
   key="$CX_ROOT/share/crossover/data/tie.pub"
+  [ -r "$key" ] || { echo unlicensed; return 0; }
   seen_license=""
   for dir in "$HOME/Library/Preferences" "$np_system_prefs"; do
     lic="$dir/com.codeweavers.CrossOver.license"
@@ -177,7 +178,7 @@ license_state() {
     || { echo unlicensed; return 0; }
   start=$(date -j -f '%Y-%m-%d %H:%M:%S %z' "$first" +%s 2>/dev/null) \
     || { echo unlicensed; return 0; }
-  now=${np_now:-$(date +%s)}
+  now=$(date +%s)
   # A first run after now means the clock or the record moved.
   if [ "$start" -gt "$now" ]; then echo unlicensed; return 0; fi
   left=$((start + 14 * 86400 - now))
