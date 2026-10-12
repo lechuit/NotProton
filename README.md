@@ -39,6 +39,30 @@ The raw wrapper tracks the launched Wine process, rather than waiting for every
 process in the prefix; Windows Steam can therefore remain open after a game exits.
 Launchers that exit before handing off to a child game are not yet tracked.
 
+### FreeType build troubleshooting on macOS 26
+
+In a verified x86_64 Wine 11.19 build on macOS 26, prefix readiness succeeded but
+GDI enumerated zero fonts. The log reported `Wine cannot find the FreeType font
+library`, followed by console-font failures during Steam preparation. Wine's
+[Darwin configure check](https://github.com/wine-mirror/wine/blob/455e3509b98a6919fd4ad1def4803e08c41c03b2/aclocal.m4#L61-L85)
+selected the basename `libfreetype.6.dylib`, which
+[win32u loads with dlopen](https://github.com/wine-mirror/wine/blob/455e3509b98a6919fd4ad1def4803e08c41c03b2/dlls/win32u/freetype.c#L1455-L1466).
+The tested loader did not search `/usr/local/lib`; the same library loaded by
+absolute path, with its x86_64 dependencies available.
+
+Rerun the original configure command with the standard cache override
+`ac_cv_lib_soname_freetype=/absolute/path/to/libfreetype.6.dylib`, using a stable
+library location. From that build directory, rebuild only
+`make dlls/win32u/win32u.so`. With that runtime stopped, back up and install the
+rebuilt component as `lib/wine/x86_64-unix/win32u.so`, preserving the package's
+signing requirements. This configuration repair leaves Wine source, the loader,
+wineserver, and ntdll unchanged.
+
+Verify with an isolated GDI font-enumeration probe before retrying a game. Our
+probe changed from zero fonts and unavailable default metrics to 870 fonts,
+usable metrics, and no FreeType or console-font errors. This fixes the observed
+font-loading failure; it does not establish game compatibility.
+
 ### Experimental native SteamAPI mode
 
 Version 2 adds a separately rebuilt native SteamAPI bridge for a matching
